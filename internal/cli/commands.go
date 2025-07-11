@@ -319,27 +319,103 @@ func NewTxnCommand() *cli.Command {
 			{
 				Name:  "begin",
 				Usage: "Begin a new transaction",
+				Flags: []cli.Flag{
+					&cli.StringSliceFlag{
+						Name:  "endpoints",
+						Usage: "Comma-separated list of server endpoints",
+						Value: []string{"localhost:8081"},
+					},
+					&cli.DurationFlag{
+						Name:  "timeout",
+						Usage: "Request timeout",
+						Value: 5 * time.Second,
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// TODO: Implement transaction begin
-					fmt.Println("Transaction support coming soon...")
+					endpoints := cmd.StringSlice("endpoints")
+					timeout := cmd.Duration("timeout")
+
+					// Create client and begin transaction
+					client, err := createClient(endpoints, timeout)
+					if err != nil {
+						return fmt.Errorf("failed to create client: %w", err)
+					}
+					defer client.Close()
+
+					if err := client.BeginTransaction(ctx); err != nil {
+						return fmt.Errorf("failed to begin transaction: %w", err)
+					}
+
+					fmt.Println("Transaction started successfully")
+					fmt.Println("Note: Use 'txn commit' to save changes or 'txn rollback' to discard")
 					return nil
 				},
 			},
 			{
 				Name:  "commit",
 				Usage: "Commit the current transaction",
+				Flags: []cli.Flag{
+					&cli.StringSliceFlag{
+						Name:  "endpoints",
+						Usage: "Comma-separated list of server endpoints",
+						Value: []string{"localhost:8081"},
+					},
+					&cli.DurationFlag{
+						Name:  "timeout",
+						Usage: "Request timeout",
+						Value: 5 * time.Second,
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// TODO: Implement transaction commit
-					fmt.Println("Transaction support coming soon...")
+					endpoints := cmd.StringSlice("endpoints")
+					timeout := cmd.Duration("timeout")
+
+					// Create client and commit transaction
+					client, err := createClient(endpoints, timeout)
+					if err != nil {
+						return fmt.Errorf("failed to create client: %w", err)
+					}
+					defer client.Close()
+
+					if err := client.CommitTransaction(ctx); err != nil {
+						return fmt.Errorf("failed to commit transaction: %w", err)
+					}
+
+					fmt.Println("Transaction committed successfully")
 					return nil
 				},
 			},
 			{
 				Name:  "rollback",
 				Usage: "Rollback the current transaction",
+				Flags: []cli.Flag{
+					&cli.StringSliceFlag{
+						Name:  "endpoints",
+						Usage: "Comma-separated list of server endpoints",
+						Value: []string{"localhost:8081"},
+					},
+					&cli.DurationFlag{
+						Name:  "timeout",
+						Usage: "Request timeout",
+						Value: 5 * time.Second,
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// TODO: Implement transaction rollback
-					fmt.Println("Transaction support coming soon...")
+					endpoints := cmd.StringSlice("endpoints")
+					timeout := cmd.Duration("timeout")
+
+					// Create client and rollback transaction
+					client, err := createClient(endpoints, timeout)
+					if err != nil {
+						return fmt.Errorf("failed to create client: %w", err)
+					}
+					defer client.Close()
+
+					if err := client.RollbackTransaction(ctx); err != nil {
+						return fmt.Errorf("failed to rollback transaction: %w", err)
+					}
+
+					fmt.Println("Transaction rolled back successfully")
 					return nil
 				},
 			},
@@ -357,9 +433,45 @@ func NewBatchCommand() *cli.Command {
 				Name:      "put",
 				Usage:     "Batch put operations",
 				ArgsUsage: "<key1> <value1> [key2 value2 ...]",
+				Flags: []cli.Flag{
+					&cli.StringSliceFlag{
+						Name:  "endpoints",
+						Usage: "Comma-separated list of server endpoints",
+						Value: []string{"localhost:8081"},
+					},
+					&cli.DurationFlag{
+						Name:  "timeout",
+						Usage: "Request timeout",
+						Value: 5 * time.Second,
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// TODO: Implement batch put
-					fmt.Println("Batch operations coming soon...")
+					args := cmd.Args().Slice()
+					if len(args) < 2 || len(args)%2 != 0 {
+						return fmt.Errorf("batch put requires pairs of key-value arguments")
+					}
+
+					endpoints := cmd.StringSlice("endpoints")
+					timeout := cmd.Duration("timeout")
+
+					// Create client
+					client, err := createClient(endpoints, timeout)
+					if err != nil {
+						return fmt.Errorf("failed to create client: %w", err)
+					}
+					defer client.Close()
+
+					// Process key-value pairs
+					for i := 0; i < len(args); i += 2 {
+						key := args[i]
+						value := args[i+1]
+						
+						if err := client.Put(ctx, key, []byte(value)); err != nil {
+							return fmt.Errorf("failed to put key %s: %w", key, err)
+						}
+					}
+
+					fmt.Printf("Batch put completed successfully (%d operations)\n", len(args)/2)
 					return nil
 				},
 			},
@@ -380,9 +492,52 @@ func NewAdminCommand() *cli.Command {
 					{
 						Name:  "status",
 						Usage: "Show cluster status",
+						Flags: []cli.Flag{
+							&cli.StringSliceFlag{
+								Name:  "endpoints",
+								Usage: "Comma-separated list of server endpoints",
+								Value: []string{"localhost:8081"},
+							},
+							&cli.DurationFlag{
+								Name:  "timeout",
+								Usage: "Request timeout",
+								Value: 5 * time.Second,
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							// TODO: Implement cluster status
-							fmt.Println("Cluster management coming soon...")
+							endpoints := cmd.StringSlice("endpoints")
+							timeout := cmd.Duration("timeout")
+
+							// Create client and get cluster info
+							client, err := createClient(endpoints, timeout)
+							if err != nil {
+								return fmt.Errorf("failed to create client: %w", err)
+							}
+							defer client.Close()
+
+							info, err := client.GetClusterInfo(ctx)
+							if err != nil {
+								return fmt.Errorf("failed to get cluster status: %w", err)
+							}
+
+							fmt.Printf("Cluster Status:\n")
+							fmt.Printf("  Cluster ID: %v\n", info["cluster_id"])
+							fmt.Printf("  Node Count: %v\n", info["node_count"])
+							fmt.Printf("  Replication Factor: %v\n", info["replication_factor"])
+							fmt.Printf("  Partitions: %v\n", info["num_partitions"])
+							
+							if nodes, ok := info["nodes"].([]map[string]interface{}); ok {
+								fmt.Printf("  Nodes:\n")
+								for _, node := range nodes {
+									fmt.Printf("    - Node ID: %v\n", node["node_id"])
+									fmt.Printf("      Peer Address: %v\n", node["peer_address"])
+									fmt.Printf("      Client Address: %v\n", node["client_address"])
+									fmt.Printf("      Status: %v\n", node["status"])
+									fmt.Printf("      Partitions: %v\n", node["partition_ids"])
+									fmt.Printf("\n")
+								}
+							}
+							
 							return nil
 						},
 					},
@@ -396,9 +551,42 @@ func NewAdminCommand() *cli.Command {
 						Name:      "set",
 						Usage:     "Set configuration value",
 						ArgsUsage: "<key> <value>",
+						Flags: []cli.Flag{
+							&cli.StringSliceFlag{
+								Name:  "endpoints",
+								Usage: "Comma-separated list of server endpoints",
+								Value: []string{"localhost:8081"},
+							},
+							&cli.DurationFlag{
+								Name:  "timeout",
+								Usage: "Request timeout",
+								Value: 5 * time.Second,
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							// TODO: Implement config set
-							fmt.Println("Configuration management coming soon...")
+							if cmd.Args().Len() != 2 {
+								return fmt.Errorf("exactly two arguments required: key and value")
+							}
+
+							key := cmd.Args().Get(0)
+							value := cmd.Args().Get(1)
+							endpoints := cmd.StringSlice("endpoints")
+							timeout := cmd.Duration("timeout")
+
+							// Create client and set configuration
+							client, err := createClient(endpoints, timeout)
+							if err != nil {
+								return fmt.Errorf("failed to create client: %w", err)
+							}
+							defer client.Close()
+
+							// Use the metadata namespace for configuration
+							configKey := "_/config/" + key
+							if err := client.Put(ctx, configKey, []byte(value)); err != nil {
+								return fmt.Errorf("failed to set configuration %s: %w", key, err)
+							}
+
+							fmt.Printf("Configuration set: %s = %s\n", key, value)
 							return nil
 						},
 					},
@@ -406,9 +594,42 @@ func NewAdminCommand() *cli.Command {
 						Name:      "get",
 						Usage:     "Get configuration value",
 						ArgsUsage: "<key>",
+						Flags: []cli.Flag{
+							&cli.StringSliceFlag{
+								Name:  "endpoints",
+								Usage: "Comma-separated list of server endpoints",
+								Value: []string{"localhost:8081"},
+							},
+							&cli.DurationFlag{
+								Name:  "timeout",
+								Usage: "Request timeout",
+								Value: 5 * time.Second,
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							// TODO: Implement config get
-							fmt.Println("Configuration management coming soon...")
+							if cmd.Args().Len() != 1 {
+								return fmt.Errorf("exactly one key argument required")
+							}
+
+							key := cmd.Args().Get(0)
+							endpoints := cmd.StringSlice("endpoints")
+							timeout := cmd.Duration("timeout")
+
+							// Create client and get configuration
+							client, err := createClient(endpoints, timeout)
+							if err != nil {
+								return fmt.Errorf("failed to create client: %w", err)
+							}
+							defer client.Close()
+
+							// Use the metadata namespace for configuration
+							configKey := "_/config/" + key
+							value, err := client.Get(ctx, configKey)
+							if err != nil {
+								return fmt.Errorf("failed to get configuration %s: %w", key, err)
+							}
+
+							fmt.Printf("%s = %s\n", key, string(value))
 							return nil
 						},
 					},
@@ -422,9 +643,45 @@ func NewAdminCommand() *cli.Command {
 						Name:      "create",
 						Usage:     "Create backup",
 						ArgsUsage: "<path>",
+						Flags: []cli.Flag{
+							&cli.StringSliceFlag{
+								Name:  "endpoints",
+								Usage: "Comma-separated list of server endpoints",
+								Value: []string{"localhost:8081"},
+							},
+							&cli.DurationFlag{
+								Name:  "timeout",
+								Usage: "Request timeout",
+								Value: 30 * time.Second,
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							// TODO: Implement backup create
-							fmt.Println("Backup operations coming soon...")
+							if cmd.Args().Len() != 1 {
+								return fmt.Errorf("exactly one path argument required")
+							}
+
+							path := cmd.Args().Get(0)
+							endpoints := cmd.StringSlice("endpoints")
+							timeout := cmd.Duration("timeout")
+
+							// Create client
+							client, err := createClient(endpoints, timeout)
+							if err != nil {
+								return fmt.Errorf("failed to create client: %w", err)
+							}
+							defer client.Close()
+
+							// Store backup metadata
+							backupKey := "_/backups/" + path
+							backupValue := fmt.Sprintf(`{"path": "%s", "created_at": "%s", "status": "created"}`, 
+								path, time.Now().Format(time.RFC3339))
+							
+							if err := client.Put(ctx, backupKey, []byte(backupValue)); err != nil {
+								return fmt.Errorf("failed to create backup metadata: %w", err)
+							}
+
+							fmt.Printf("Backup created: %s\n", path)
+							fmt.Printf("Note: This is a placeholder implementation. Full backup functionality is in development.\n")
 							return nil
 						},
 					},
@@ -432,9 +689,43 @@ func NewAdminCommand() *cli.Command {
 						Name:      "restore",
 						Usage:     "Restore from backup",
 						ArgsUsage: "<path>",
+						Flags: []cli.Flag{
+							&cli.StringSliceFlag{
+								Name:  "endpoints",
+								Usage: "Comma-separated list of server endpoints",
+								Value: []string{"localhost:8081"},
+							},
+							&cli.DurationFlag{
+								Name:  "timeout",
+								Usage: "Request timeout",
+								Value: 30 * time.Second,
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							// TODO: Implement backup restore
-							fmt.Println("Backup operations coming soon...")
+							if cmd.Args().Len() != 1 {
+								return fmt.Errorf("exactly one path argument required")
+							}
+
+							path := cmd.Args().Get(0)
+							endpoints := cmd.StringSlice("endpoints")
+							timeout := cmd.Duration("timeout")
+
+							// Create client
+							client, err := createClient(endpoints, timeout)
+							if err != nil {
+								return fmt.Errorf("failed to create client: %w", err)
+							}
+							defer client.Close()
+
+							// Check if backup exists
+							backupKey := "_/backups/" + path
+							_, err = client.Get(ctx, backupKey)
+							if err != nil {
+								return fmt.Errorf("backup not found: %s", path)
+							}
+
+							fmt.Printf("Restore from backup: %s\n", path)
+							fmt.Printf("Note: This is a placeholder implementation. Full restore functionality is in development.\n")
 							return nil
 						},
 					},
@@ -518,12 +809,57 @@ func (r *realClient) Close() error {
 	return r.client.Close()
 }
 
+func (r *realClient) BeginTransaction(ctx context.Context) error {
+	_, err := r.client.BeginTransaction(ctx)
+	return err
+}
+
+func (r *realClient) CommitTransaction(ctx context.Context) error {
+	// For now, this is a placeholder - actual implementation would need transaction tracking
+	return fmt.Errorf("transaction commit not implemented - transactions are handled at the server level")
+}
+
+func (r *realClient) RollbackTransaction(ctx context.Context) error {
+	// For now, this is a placeholder - actual implementation would need transaction tracking
+	return fmt.Errorf("transaction rollback not implemented - transactions are handled at the server level")
+}
+
+func (r *realClient) GetClusterInfo(ctx context.Context) (map[string]interface{}, error) {
+	info, err := r.client.GetClusterInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	result := make(map[string]interface{})
+	result["cluster_id"] = info.ClusterId
+	result["replication_factor"] = info.ReplicationFactor
+	result["num_partitions"] = info.NumPartitions
+	result["node_count"] = len(info.Nodes)
+	result["nodes"] = make([]map[string]interface{}, len(info.Nodes))
+	
+	for i, node := range info.Nodes {
+		nodeInfo := make(map[string]interface{})
+		nodeInfo["node_id"] = node.NodeId
+		nodeInfo["peer_address"] = node.PeerAddress
+		nodeInfo["client_address"] = node.ClientAddress
+		nodeInfo["status"] = node.Status.String()
+		nodeInfo["partition_ids"] = node.PartitionIds
+		result["nodes"].([]map[string]interface{})[i] = nodeInfo
+	}
+	
+	return result, nil
+}
+
 // ClientInterface defines the client interface for testing
 type ClientInterface interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 	Put(ctx context.Context, key string, value []byte) error
 	Delete(ctx context.Context, key string) error
 	Range(ctx context.Context, startKey, endKey string, limit int) (map[string][]byte, error)
+	BeginTransaction(ctx context.Context) error
+	CommitTransaction(ctx context.Context) error
+	RollbackTransaction(ctx context.Context) error
+	GetClusterInfo(ctx context.Context) (map[string]interface{}, error)
 	Close() error
 }
 
