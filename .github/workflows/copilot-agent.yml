@@ -1,0 +1,95 @@
+# GitHub Copilot Agent Integration
+# This workflow enables automated development with GitHub Copilot
+name: Copilot Agent Development
+
+on:
+  issues:
+    types: [opened, labeled, assigned]
+  pull_request:
+    types: [opened, synchronize]
+  schedule:
+    # Run daily to check for incomplete tasks
+    - cron: '0 9 * * *'
+
+jobs:
+  copilot-agent:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'copilot-agent') || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Run tests
+        run: |
+          go test -v ./...
+          go test -race -v ./...
+
+      - name: Build
+        run: |
+          make build
+
+      - name: Integration tests
+        run: |
+          make test-integration
+
+      - name: Performance tests
+        run: |
+          make test-performance
+
+      - name: Generate coverage report
+        run: |
+          go test -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.html
+
+  auto-merge:
+    runs-on: ubuntu-latest
+    needs: copilot-agent
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'github-actions[bot]'
+
+    steps:
+      - name: Auto-merge Copilot PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request.number;
+
+            // Only auto-merge if all checks pass
+            const checks = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref: context.payload.pull_request.head.sha
+            });
+
+            const allPassed = checks.data.check_runs.every(check =>
+              check.conclusion === 'success' || check.conclusion === 'neutral'
+            );
+
+            if (allPassed) {
+              await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number,
+                merge_method: 'squash'
+              });
+            }
