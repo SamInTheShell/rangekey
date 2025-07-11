@@ -466,3 +466,23 @@ func (s *Server) checkRebalancing(ctx context.Context) {
 	// - Triggering partition splits/merges
 	// - Coordinating data migration
 }
+
+// IsLeader returns true if this node is the Raft leader
+func (s *Server) IsLeader() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	if s.raftNode == nil {
+		return false
+	}
+	
+	return s.raftNode.IsLeader()
+}
+
+// GetConfig returns the server configuration
+func (s *Server) GetConfig() *config.ServerConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	return s.config
+}

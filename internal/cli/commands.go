@@ -319,27 +319,128 @@ func NewTxnCommand() *cli.Command {
 			{
 				Name:  "begin",
 				Usage: "Begin a new transaction",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "address",
+						Usage: "Server address",
+						Value: "localhost:8081",
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// TODO: Implement transaction begin
-					fmt.Println("Transaction support coming soon...")
+					address := cmd.String("address")
+					
+					// Create client
+					client, err := client.NewClient(&client.Config{
+						Address: address,
+					})
+					if err != nil {
+						return fmt.Errorf("failed to create client: %w", err)
+					}
+					
+					// Connect to server
+					if err := client.Connect(ctx); err != nil {
+						return fmt.Errorf("failed to connect to server: %w", err)
+					}
+					defer client.Close()
+					
+					// Begin transaction
+					txn, err := client.BeginTransaction(ctx)
+					if err != nil {
+						return fmt.Errorf("failed to begin transaction: %w", err)
+					}
+					
+					fmt.Printf("Transaction started: %s\n", txn.ID())
+					fmt.Println("Use 'rangedb txn commit' or 'rangedb txn rollback' to complete the transaction")
 					return nil
 				},
 			},
 			{
 				Name:  "commit",
 				Usage: "Commit the current transaction",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "address",
+						Usage: "Server address",
+						Value: "localhost:8081",
+					},
+					&cli.StringFlag{
+						Name:     "id",
+						Usage:    "Transaction ID",
+						Required: true,
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// TODO: Implement transaction commit
-					fmt.Println("Transaction support coming soon...")
+					address := cmd.String("address")
+					txnID := cmd.String("id")
+					
+					// Create client
+					client, err := client.NewClient(&client.Config{
+						Address: address,
+					})
+					if err != nil {
+						return fmt.Errorf("failed to create client: %w", err)
+					}
+					
+					// Connect to server
+					if err := client.Connect(ctx); err != nil {
+						return fmt.Errorf("failed to connect to server: %w", err)
+					}
+					defer client.Close()
+					
+					// Create transaction object
+					txn := client.NewTransactionFromID(txnID)
+					
+					// Commit transaction
+					if err := txn.Commit(ctx); err != nil {
+						return fmt.Errorf("failed to commit transaction: %w", err)
+					}
+					
+					fmt.Printf("Transaction %s committed successfully\n", txnID)
 					return nil
 				},
 			},
 			{
 				Name:  "rollback",
 				Usage: "Rollback the current transaction",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "address",
+						Usage: "Server address",
+						Value: "localhost:8081",
+					},
+					&cli.StringFlag{
+						Name:     "id",
+						Usage:    "Transaction ID",
+						Required: true,
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// TODO: Implement transaction rollback
-					fmt.Println("Transaction support coming soon...")
+					address := cmd.String("address")
+					txnID := cmd.String("id")
+					
+					// Create client
+					client, err := client.NewClient(&client.Config{
+						Address: address,
+					})
+					if err != nil {
+						return fmt.Errorf("failed to create client: %w", err)
+					}
+					
+					// Connect to server
+					if err := client.Connect(ctx); err != nil {
+						return fmt.Errorf("failed to connect to server: %w", err)
+					}
+					defer client.Close()
+					
+					// Create transaction object
+					txn := client.NewTransactionFromID(txnID)
+					
+					// Rollback transaction
+					if err := txn.Rollback(ctx); err != nil {
+						return fmt.Errorf("failed to rollback transaction: %w", err)
+					}
+					
+					fmt.Printf("Transaction %s rolled back successfully\n", txnID)
 					return nil
 				},
 			},
@@ -380,9 +481,51 @@ func NewAdminCommand() *cli.Command {
 					{
 						Name:  "status",
 						Usage: "Show cluster status",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "address",
+								Usage: "Server address",
+								Value: "localhost:8081",
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							// TODO: Implement cluster status
-							fmt.Println("Cluster management coming soon...")
+							address := cmd.String("address")
+							
+							// Create client
+							client, err := client.NewClient(&client.Config{
+								Address: address,
+							})
+							if err != nil {
+								return fmt.Errorf("failed to create client: %w", err)
+							}
+							
+							// Connect to server
+							if err := client.Connect(ctx); err != nil {
+								return fmt.Errorf("failed to connect to server: %w", err)
+							}
+							defer client.Close()
+							
+							// Get cluster info
+							clusterInfo, err := client.GetClusterInfo(ctx)
+							if err != nil {
+								return fmt.Errorf("failed to get cluster info: %w", err)
+							}
+							
+							// Print cluster status
+							fmt.Printf("Cluster Status:\n")
+							fmt.Printf("  Cluster ID: %s\n", clusterInfo.ClusterId)
+							fmt.Printf("  Replication Factor: %d\n", clusterInfo.ReplicationFactor)
+							fmt.Printf("  Number of Partitions: %d\n", clusterInfo.NumPartitions)
+							fmt.Printf("  Nodes (%d):\n", len(clusterInfo.Nodes))
+							
+							for i, node := range clusterInfo.Nodes {
+								fmt.Printf("    %d. %s\n", i+1, node.NodeId)
+								fmt.Printf("       Client Address: %s\n", node.ClientAddress)
+								fmt.Printf("       Peer Address: %s\n", node.PeerAddress)
+								fmt.Printf("       Status: %s\n", node.Status)
+								fmt.Printf("       Partitions: %v\n", node.PartitionIds)
+							}
+							
 							return nil
 						},
 					},
@@ -396,9 +539,43 @@ func NewAdminCommand() *cli.Command {
 						Name:      "set",
 						Usage:     "Set configuration value",
 						ArgsUsage: "<key> <value>",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "address",
+								Usage: "Server address",
+								Value: "localhost:8081",
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							// TODO: Implement config set
-							fmt.Println("Configuration management coming soon...")
+							args := cmd.Args()
+							if args.Len() != 2 {
+								return fmt.Errorf("usage: rangedb admin config set <key> <value>")
+							}
+							
+							key := args.Get(0)
+							value := args.Get(1)
+							address := cmd.String("address")
+							
+							// Create client
+							client, err := client.NewClient(&client.Config{
+								Address: address,
+							})
+							if err != nil {
+								return fmt.Errorf("failed to create client: %w", err)
+							}
+							
+							// Connect to server
+							if err := client.Connect(ctx); err != nil {
+								return fmt.Errorf("failed to connect to server: %w", err)
+							}
+							defer client.Close()
+							
+							// Set configuration value
+							if err := client.Put(ctx, key, []byte(value)); err != nil {
+								return fmt.Errorf("failed to set configuration: %w", err)
+							}
+							
+							fmt.Printf("Configuration set: %s = %s\n", key, value)
 							return nil
 						},
 					},
@@ -406,9 +583,43 @@ func NewAdminCommand() *cli.Command {
 						Name:      "get",
 						Usage:     "Get configuration value",
 						ArgsUsage: "<key>",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "address",
+								Usage: "Server address",
+								Value: "localhost:8081",
+							},
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							// TODO: Implement config get
-							fmt.Println("Configuration management coming soon...")
+							args := cmd.Args()
+							if args.Len() != 1 {
+								return fmt.Errorf("usage: rangedb admin config get <key>")
+							}
+							
+							key := args.Get(0)
+							address := cmd.String("address")
+							
+							// Create client
+							client, err := client.NewClient(&client.Config{
+								Address: address,
+							})
+							if err != nil {
+								return fmt.Errorf("failed to create client: %w", err)
+							}
+							
+							// Connect to server
+							if err := client.Connect(ctx); err != nil {
+								return fmt.Errorf("failed to connect to server: %w", err)
+							}
+							defer client.Close()
+							
+							// Get configuration value
+							value, err := client.Get(ctx, key)
+							if err != nil {
+								return fmt.Errorf("failed to get configuration: %w", err)
+							}
+							
+							fmt.Printf("%s\n", string(value))
 							return nil
 						},
 					},
