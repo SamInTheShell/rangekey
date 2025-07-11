@@ -1,0 +1,182 @@
+syntax = "proto3";
+
+package rangedb.v1;
+
+option go_package = "github.com/samintheshell/rangekey/api/rangedb/v1";
+
+// RangeDB service definition
+service RangeDB {
+  // Core key-value operations
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Put(PutRequest) returns (PutResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Range(RangeRequest) returns (stream RangeResponse);
+
+  // Batch operations
+  rpc Batch(BatchRequest) returns (BatchResponse);
+
+  // Transaction operations
+  rpc BeginTransaction(BeginTransactionRequest) returns (BeginTransactionResponse);
+  rpc CommitTransaction(CommitTransactionRequest) returns (CommitTransactionResponse);
+  rpc RollbackTransaction(RollbackTransactionRequest) returns (RollbackTransactionResponse);
+
+  // Cluster operations
+  rpc GetClusterInfo(GetClusterInfoRequest) returns (GetClusterInfoResponse);
+  rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+}
+
+// Basic key-value pair
+message KeyValue {
+  bytes key = 1;
+  bytes value = 2;
+  int64 version = 3;
+  int64 timestamp = 4;
+}
+
+// Get operation
+message GetRequest {
+  bytes key = 1;
+  optional string transaction_id = 2;
+}
+
+message GetResponse {
+  KeyValue kv = 1;
+  bool found = 2;
+  int64 version = 3;
+}
+
+// Put operation
+message PutRequest {
+  bytes key = 1;
+  bytes value = 2;
+  optional string transaction_id = 3;
+  optional int64 expected_version = 4;
+}
+
+message PutResponse {
+  int64 version = 1;
+  bool success = 2;
+}
+
+// Delete operation
+message DeleteRequest {
+  bytes key = 1;
+  optional string transaction_id = 2;
+  optional int64 expected_version = 3;
+}
+
+message DeleteResponse {
+  bool success = 1;
+  int64 version = 2;
+}
+
+// Range operation
+message RangeRequest {
+  bytes start_key = 1;
+  bytes end_key = 2;
+  optional int32 limit = 3;
+  optional string transaction_id = 4;
+}
+
+message RangeResponse {
+  KeyValue kv = 1;
+  bool has_more = 2;
+}
+
+// Batch operation
+message BatchRequest {
+  repeated BatchOperation operations = 1;
+  optional string transaction_id = 2;
+}
+
+message BatchOperation {
+  oneof operation {
+    PutRequest put = 1;
+    DeleteRequest delete = 2;
+  }
+}
+
+message BatchResponse {
+  repeated BatchResult results = 1;
+  bool success = 2;
+}
+
+message BatchResult {
+  oneof result {
+    PutResponse put = 1;
+    DeleteResponse delete = 2;
+  }
+}
+
+// Transaction operations
+message BeginTransactionRequest {
+  optional int64 timeout_ms = 1;
+  optional IsolationLevel isolation_level = 2;
+}
+
+message BeginTransactionResponse {
+  string transaction_id = 1;
+  int64 timestamp = 2;
+}
+
+message CommitTransactionRequest {
+  string transaction_id = 1;
+}
+
+message CommitTransactionResponse {
+  bool success = 1;
+  int64 commit_timestamp = 2;
+}
+
+message RollbackTransactionRequest {
+  string transaction_id = 1;
+}
+
+message RollbackTransactionResponse {
+  bool success = 1;
+}
+
+// Cluster information
+message GetClusterInfoRequest {}
+
+message GetClusterInfoResponse {
+  string cluster_id = 1;
+  repeated NodeInfo nodes = 2;
+  int32 replication_factor = 3;
+  int64 num_partitions = 4;
+}
+
+message GetNodeInfoRequest {}
+
+message GetNodeInfoResponse {
+  string node_id = 1;
+  string peer_address = 2;
+  string client_address = 3;
+  NodeStatus status = 4;
+  repeated int64 partition_ids = 5;
+}
+
+message NodeInfo {
+  string node_id = 1;
+  string peer_address = 2;
+  string client_address = 3;
+  NodeStatus status = 4;
+  repeated int64 partition_ids = 5;
+}
+
+// Enums
+enum IsolationLevel {
+  READ_UNCOMMITTED = 0;
+  READ_COMMITTED = 1;
+  REPEATABLE_READ = 2;
+  SERIALIZABLE = 3;
+}
+
+enum NodeStatus {
+  NODE_UNKNOWN = 0;
+  NODE_STARTING = 1;
+  NODE_RUNNING = 2;
+  NODE_STOPPING = 3;
+  NODE_STOPPED = 4;
+  NODE_FAILED = 5;
+}

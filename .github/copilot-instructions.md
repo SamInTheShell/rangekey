@@ -1,3 +1,2 @@
-We are only planning the work to be done now. Please do not write any code yet.
-Only update `.github/developer-plans/InitialVersion.md` with the plan for the initial version of the project.
-The plan should be setup with checkboxes for each task.
+Refer to `.github/developer-plans/InitialVersion.md` for the work that must be done.
+Make updates to `.github/developer-plans/InitialVersion.md` as work is completed.
