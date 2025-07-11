@@ -10,6 +10,7 @@ import (
 	"github.com/samintheshell/rangekey/internal/server"
 	"github.com/samintheshell/rangekey/internal/version"
 	"github.com/samintheshell/rangekey/client"
+	"github.com/samintheshell/rangekey/api/rangedb/v1"
 	"github.com/urfave/cli/v3"
 )
 
@@ -458,9 +459,57 @@ func NewBatchCommand() *cli.Command {
 				Name:      "put",
 				Usage:     "Batch put operations",
 				ArgsUsage: "<key1> <value1> [key2 value2 ...]",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "address",
+						Usage: "Server address",
+						Value: "localhost:8081",
+					},
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					// TODO: Implement batch put
-					fmt.Println("Batch operations coming soon...")
+					args := cmd.Args()
+					if args.Len() < 2 || args.Len()%2 != 0 {
+						return fmt.Errorf("usage: rangedb batch put <key1> <value1> [key2 value2 ...]")
+					}
+					
+					address := cmd.String("address")
+					
+					// Create client
+					client, err := client.NewClient(&client.Config{
+						Address: address,
+					})
+					if err != nil {
+						return fmt.Errorf("failed to create client: %w", err)
+					}
+					
+					// Connect to server
+					if err := client.Connect(ctx); err != nil {
+						return fmt.Errorf("failed to connect to server: %w", err)
+					}
+					defer client.Close()
+					
+					// Create batch operations
+					var operations []*v1.BatchOperation
+					for i := 0; i < args.Len(); i += 2 {
+						key := args.Get(i)
+						value := args.Get(i + 1)
+						
+						operations = append(operations, &v1.BatchOperation{
+							Operation: &v1.BatchOperation_Put{
+								Put: &v1.PutRequest{
+									Key:   []byte(key),
+									Value: []byte(value),
+								},
+							},
+						})
+					}
+					
+					// Execute batch
+					if err := client.Batch(ctx, operations); err != nil {
+						return fmt.Errorf("failed to execute batch: %w", err)
+					}
+					
+					fmt.Printf("Batch operation completed successfully (%d operations)\n", len(operations))
 					return nil
 				},
 			},
