@@ -270,6 +270,9 @@ func TestIntegrationBasicOperations(t *testing.T) {
 		err := client.Put(ctx, "test-key", []byte("test-value"))
 		assert.NoError(t, err)
 
+		// Wait for the operation to be committed through Raft
+		time.Sleep(1 * time.Second)
+
 		value, err := client.Get(ctx, "test-key")
 		assert.NoError(t, err)
 		assert.Equal(t, []byte("test-value"), value)
@@ -279,8 +282,14 @@ func TestIntegrationBasicOperations(t *testing.T) {
 		err := client.Put(ctx, "delete-key", []byte("delete-value"))
 		assert.NoError(t, err)
 
+		// Wait for the PUT to be committed
+		time.Sleep(1 * time.Second)
+
 		err = client.Delete(ctx, "delete-key")
 		assert.NoError(t, err)
+
+		// Wait for the DELETE to be committed
+		time.Sleep(1 * time.Second)
 
 		_, err = client.Get(ctx, "delete-key")
 		assert.Error(t, err) // Should not exist
@@ -294,6 +303,9 @@ func TestIntegrationBasicOperations(t *testing.T) {
 			err := client.Put(ctx, key, []byte(value))
 			assert.NoError(t, err)
 		}
+
+		// Wait for all operations to be committed through Raft
+		time.Sleep(2 * time.Second)
 
 		// Test range query
 		results, err := client.Range(ctx, "range/key_", "range/key_z", 10)
