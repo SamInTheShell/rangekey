@@ -15,12 +15,37 @@ A distributed key-value database built with Go, featuring automatic partitioning
 
 ## Quick Start
 
-### Prerequisites
+### Download Pre-built Binaries
+
+Pre-built binaries are available for Linux, macOS, and Windows from the [GitHub Releases](https://github.com/samintheshell/rangekey/releases) page.
+
+#### Linux (x64)
+```bash
+wget https://github.com/SamInTheShell/rangekey/releases/latest/download/rangedb-*-linux-amd64.tar.gz
+tar -xzf rangedb-*-linux-amd64.tar.gz
+chmod +x rangedb
+./rangedb --help
+```
+
+#### macOS (x64)
+```bash
+wget https://github.com/SamInTheShell/rangekey/releases/latest/download/rangedb-*-darwin-amd64.tar.gz
+tar -xzf rangedb-*-darwin-amd64.tar.gz
+chmod +x rangedb
+./rangedb --help
+```
+
+#### Windows (x64)
+Download the `rangedb-*-windows-amd64.zip` file from the releases page and extract the executable.
+
+### Building from Source
+
+#### Prerequisites
 
 - Go 1.24.2 or later
 - Make (optional, for build automation)
 
-### Building
+#### Building
 
 ```bash
 # Clone the repository
@@ -156,6 +181,29 @@ RangeDB is designed for easy deployment:
 
 ## Development
 
+### Automated Builds
+
+The project uses GitHub Actions for automated builds and releases:
+
+- **Continuous Integration**: Every push and pull request triggers automated builds and tests
+- **Cross-compilation**: Builds are tested for Linux, macOS, and Windows
+- **Automated Releases**: When a version tag is pushed, binaries are automatically built and attached to GitHub releases
+- **Binary Verification**: All releases include SHA256 checksums for security verification
+
+To create a new release:
+
+```bash
+# Tag the release
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+
+# GitHub Actions will automatically:
+# 1. Build binaries for all platforms
+# 2. Create release archives
+# 3. Generate checksums
+# 4. Create a GitHub release with binaries attached
+```
+
 ### Development Setup
 
 ```bash
@@ -195,7 +243,12 @@ rangekey/
 ├── client/              # Client SDK
 ├── api/                 # gRPC proto definitions
 ├── test/                # Integration tests
-└── scripts/             # Build and deployment scripts
+├── scripts/             # Build and deployment scripts
+└── .github/             # GitHub Actions workflows
+    └── workflows/       # CI/CD automation
+        ├── ci.yml       # Continuous integration
+        ├── release.yml  # Automated releases
+        └── copilot-agent.yml # Copilot integration
 ```
 
 ### Testing

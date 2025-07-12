@@ -302,6 +302,9 @@ Build a distributed key-value database using etcd v3 as foundation with multi-ra
   - [x] Configuration templates
   - [x] Client SDK package distribution (Go modules)
   - [x] Multi-language client SDK planning
+  - [x] Automated binary builds for Mac, Linux, and Windows
+  - [x] GitHub Actions workflows for CI/CD
+  - [x] Automated GitHub releases with binaries
 
 ## Technical Specifications
 

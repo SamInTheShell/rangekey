@@ -1,0 +1,128 @@
+# Continuous Integration
+# This workflow runs on every push and pull request to ensure builds work correctly
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.2'
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: make deps
+
+    - name: Run tests
+      run: make test
+
+    - name: Run linter
+      run: |
+        # Install golangci-lint if not available
+        if ! command -v golangci-lint &> /dev/null; then
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        fi
+        make vet
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.2'
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Build for current platform
+      run: make build
+
+    - name: Test binary
+      run: |
+        ./build/rangedb --help
+        ./build/rangedb --version || echo "Version command not available"
+
+  cross-compile:
+    name: Cross-compile
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.2'
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Cross-compile for all platforms
+      run: |
+        echo "Building for all platforms..."
+        make build-all
+
+    - name: Verify all binaries exist
+      run: |
+        ls -la dist/
+        ls -la dist/linux/
+        ls -la dist/darwin/
+        ls -la dist/windows/
+        
+        # Check file sizes (should be around 20MB+)
+        find dist/ -name "rangedb*" -exec ls -lh {} \;
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cross-compiled-binaries
+        path: |
+          dist/linux/rangedb
+          dist/darwin/rangedb
+          dist/windows/rangedb.exe
+        retention-days: 7
