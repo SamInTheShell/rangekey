@@ -22,6 +22,7 @@ automatic partitioning, transactions, and backup capabilities.
 Run './rangedb --help' to see available commands.`,
 		Commands: []*cliv3.Command{
 			cli.NewServerCommand(),
+			cli.NewREPLCommand(),
 			cli.NewGetCommand(),
 			cli.NewPutCommand(),
 			cli.NewDeleteCommand(),

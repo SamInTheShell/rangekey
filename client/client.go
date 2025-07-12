@@ -282,6 +282,119 @@ func (t *Transaction) Rollback(ctx context.Context) error {
 	return nil
 }
 
+// Get retrieves a value by key within the transaction
+func (t *Transaction) Get(ctx context.Context, key string) ([]byte, error) {
+	if t.client.client == nil {
+		return nil, fmt.Errorf("client is not connected")
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(ctx, t.client.config.RequestTimeout)
+	defer cancel()
+
+	resp, err := t.client.client.Get(ctx, &v1.GetRequest{
+		Key:           []byte(key),
+		TransactionId: &t.id,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get key %s: %w", key, err)
+	}
+
+	if !resp.Found {
+		return nil, fmt.Errorf("key not found: %s", key)
+	}
+
+	return resp.Kv.Value, nil
+}
+
+// Put stores a key-value pair within the transaction
+func (t *Transaction) Put(ctx context.Context, key string, value []byte) error {
+	if t.client.client == nil {
+		return fmt.Errorf("client is not connected")
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(ctx, t.client.config.RequestTimeout)
+	defer cancel()
+
+	_, err := t.client.client.Put(ctx, &v1.PutRequest{
+		Key:           []byte(key),
+		Value:         value,
+		TransactionId: &t.id,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to put key %s: %w", key, err)
+	}
+
+	return nil
+}
+
+// Delete removes a key within the transaction
+func (t *Transaction) Delete(ctx context.Context, key string) error {
+	if t.client.client == nil {
+		return fmt.Errorf("client is not connected")
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(ctx, t.client.config.RequestTimeout)
+	defer cancel()
+
+	_, err := t.client.client.Delete(ctx, &v1.DeleteRequest{
+		Key:           []byte(key),
+		TransactionId: &t.id,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete key %s: %w", key, err)
+	}
+
+	return nil
+}
+
+// Range retrieves multiple key-value pairs within the transaction
+func (t *Transaction) Range(ctx context.Context, startKey, endKey string, limit int) ([]*v1.KeyValue, error) {
+	if t.client.client == nil {
+		return nil, fmt.Errorf("client is not connected")
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(ctx, t.client.config.RequestTimeout)
+	defer cancel()
+
+	limit32 := int32(limit)
+	stream, err := t.client.client.Range(ctx, &v1.RangeRequest{
+		StartKey:      []byte(startKey),
+		EndKey:        []byte(endKey),
+		Limit:         &limit32,
+		TransactionId: &t.id,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start range query: %w", err)
+	}
+
+	var results []*v1.KeyValue
+	for {
+		resp, err := stream.Recv()
+		if err != nil {
+			// Check if we've reached the end
+			if err.Error() == "EOF" {
+				break
+			}
+			return nil, fmt.Errorf("failed to receive range response: %w", err)
+		}
+
+		if resp.Kv != nil {
+			results = append(results, resp.Kv)
+		}
+
+		// Check if there are more results
+		if !resp.HasMore {
+			break
+		}
+	}
+
+	return results, nil
+}
+
 // GetClusterInfo retrieves cluster information
 func (c *Client) GetClusterInfo(ctx context.Context) (*v1.GetClusterInfoResponse, error) {
 	if c.client == nil {

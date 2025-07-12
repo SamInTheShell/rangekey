@@ -131,6 +131,64 @@ rangedb delete /user/123
 rangedb range /user/ /user/z --limit 100
 ```
 
+### Interactive REPL
+
+RangeDB provides an interactive REPL (Read-Eval-Print Loop) for developers to test and iterate on database operations:
+
+```bash
+# Start interactive REPL session
+rangedb repl
+
+# Example REPL session:
+rangedb> put /user/123 '{"name": "John", "email": "john@example.com"}'
+OK
+rangedb> get /user/123
+{"name": "John", "email": "john@example.com"}
+rangedb> begin
+Transaction started: e36b3db5
+rangedb(txn:e36b3db5)> put /user/456 '{"name": "Jane"}'
+OK
+rangedb(txn:e36b3db5)> commit
+Transaction e36b3db5 committed
+rangedb> range /user/ /user/z
+/user/123: {"name": "John", "email": "john@example.com"}
+/user/456: {"name": "Jane"}
+rangedb> admin cluster status
+Cluster Status:
+  Cluster ID: rangedb-cluster
+  Replication Factor: 3
+  Number of Partitions: 1
+  Nodes (1):
+    1. localhost:8080
+       Client Address: localhost:8081
+       Peer Address: localhost:8080
+       Status: NODE_RUNNING
+       Partitions: []
+rangedb> help
+Available commands:
+  get <key>                           Get value by key
+  put <key> <value>                   Put key-value pair
+  delete <key>                        Delete key
+  range <start> <end> [limit]         Get range of keys
+  begin                               Begin new transaction
+  commit                              Commit current transaction
+  rollback                            Rollback current transaction
+  admin cluster status                Show cluster status
+  help                                Show this help
+  exit                                Exit REPL
+rangedb> exit
+Goodbye!
+```
+
+The REPL features:
+- **Interactive Operations**: All database operations available interactively
+- **Transaction Support**: Begin, commit, and rollback transactions with visual feedback
+- **Command History**: Access to previously executed commands
+- **Help System**: Built-in help for all available commands
+- **Status Information**: View session and cluster status
+- **Error Handling**: Graceful error handling with helpful messages
+- **Low Friction**: Perfect for testing, debugging, and learning
+
 ### Transactions
 
 ```bash
