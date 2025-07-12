@@ -305,6 +305,10 @@ Build a distributed key-value database using etcd v3 as foundation with multi-ra
   - [x] Automated binary builds for Mac, Linux, and Windows
   - [x] GitHub Actions workflows for CI/CD
   - [x] Automated GitHub releases with binaries (Fixed workflow permissions and Go version)
+  - [x] Container images for Docker deployment
+  - [x] GitHub Container Registry integration
+  - [x] Docker Compose configurations for multi-node clusters
+  - [x] Container deployment documentation
 
 ## Technical Specifications
 

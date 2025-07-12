@@ -91,6 +91,28 @@ go build -o build/rangedb ./cmd/rangedb
                        --join=localhost:8080,localhost:8082,localhost:8084
 ```
 
+### Docker Deployment
+
+RangeDB can be deployed using Docker containers:
+
+```bash
+# Pull the latest container image
+docker pull ghcr.io/samintheshell/rangekey:latest
+
+# Run single node
+docker run -p 8080:8080 -p 8081:8081 \
+  ghcr.io/samintheshell/rangekey:latest \
+  rangedb server --cluster-init
+
+# Run 3-node cluster with Docker Compose
+docker-compose -f docker-compose.3-node.yml up -d
+
+# Run 5-node cluster with Docker Compose
+docker-compose -f docker-compose.5-node.yml up -d
+```
+
+See [Docker Deployment Guide](docs/docker-deployment.md) for detailed instructions.
+
 ## Command-Line Interface
 
 ### Basic Operations

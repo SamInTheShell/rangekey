@@ -94,3 +94,8 @@ build-errors.log
 # Temporary files
 *.tmp
 *.temp
+
+# Docker-related files
+docker-compose.override.yml
+.docker/
+docker-data/

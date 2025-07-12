@@ -1,0 +1,34 @@
+# Simple Docker Compose for single node testing
+version: '3.8'
+
+services:
+  rangedb:
+    image: ghcr.io/samintheshell/rangekey:latest
+    container_name: rangedb-single
+    hostname: rangedb-single
+    ports:
+      - "8080:8080"  # Peer communication
+      - "8081:8081"  # Client API
+    volumes:
+      - rangedb_data:/data
+    environment:
+      - RANGEDB_NODE_ID=1
+      - RANGEDB_CLUSTER_SIZE=1
+    command: rangedb server --cluster-init
+    networks:
+      - rangedb-network
+    healthcheck:
+      test: ["CMD", "rangedb", "--help"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  rangedb_data:
+    driver: local
+
+networks:
+  rangedb-network:
+    driver: bridge
+    name: rangedb-network

@@ -1,0 +1,101 @@
+# Docker Compose for 3-node RangeDB cluster
+version: '3.8'
+
+services:
+  rangedb-1:
+    image: ghcr.io/samintheshell/rangekey:latest
+    container_name: rangedb-1
+    hostname: rangedb-1
+    ports:
+      - "8080:8080"  # Peer communication
+      - "8081:8081"  # Client API
+    volumes:
+      - rangedb_data_1:/data
+    environment:
+      - RANGEDB_NODE_ID=1
+      - RANGEDB_CLUSTER_SIZE=3
+    command: >
+      rangedb server 
+      --peer-address=rangedb-1:8080 
+      --client-address=rangedb-1:8081
+      --peers=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080
+      --cluster-init
+    networks:
+      - rangedb-network
+    healthcheck:
+      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  rangedb-2:
+    image: ghcr.io/samintheshell/rangekey:latest
+    container_name: rangedb-2
+    hostname: rangedb-2
+    ports:
+      - "8082:8080"  # Peer communication
+      - "8083:8081"  # Client API
+    volumes:
+      - rangedb_data_2:/data
+    environment:
+      - RANGEDB_NODE_ID=2
+      - RANGEDB_CLUSTER_SIZE=3
+    command: >
+      rangedb server 
+      --peer-address=rangedb-2:8080 
+      --client-address=rangedb-2:8081
+      --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080
+    networks:
+      - rangedb-network
+    depends_on:
+      rangedb-1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  rangedb-3:
+    image: ghcr.io/samintheshell/rangekey:latest
+    container_name: rangedb-3
+    hostname: rangedb-3
+    ports:
+      - "8084:8080"  # Peer communication
+      - "8085:8081"  # Client API
+    volumes:
+      - rangedb_data_3:/data
+    environment:
+      - RANGEDB_NODE_ID=3
+      - RANGEDB_CLUSTER_SIZE=3
+    command: >
+      rangedb server 
+      --peer-address=rangedb-3:8080 
+      --client-address=rangedb-3:8081
+      --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080
+    networks:
+      - rangedb-network
+    depends_on:
+      rangedb-1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  rangedb_data_1:
+    driver: local
+  rangedb_data_2:
+    driver: local
+  rangedb_data_3:
+    driver: local
+
+networks:
+  rangedb-network:
+    driver: bridge
+    name: rangedb-network
