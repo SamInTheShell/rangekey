@@ -486,3 +486,51 @@ func (s *Server) GetConfig() *config.ServerConfig {
 	
 	return s.config
 }
+
+// Backup creates a backup of the server data
+func (s *Server) Backup(ctx context.Context, backupPath string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	if !s.started {
+		return fmt.Errorf("server is not started")
+	}
+	
+	log.Printf("Starting backup to %s", backupPath)
+	
+	// Create backup using storage engine
+	if err := s.storage.Backup(ctx, backupPath); err != nil {
+		return fmt.Errorf("failed to create backup: %w", err)
+	}
+	
+	log.Printf("Backup completed successfully")
+	return nil
+}
+
+// Restore restores the server from a backup
+func (s *Server) Restore(ctx context.Context, backupPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if s.started {
+		return fmt.Errorf("cannot restore while server is running - stop server first")
+	}
+	
+	log.Printf("Starting restore from %s", backupPath)
+	
+	// Restore using storage engine
+	if err := s.storage.Restore(ctx, backupPath); err != nil {
+		return fmt.Errorf("failed to restore from backup: %w", err)
+	}
+	
+	log.Printf("Restore completed successfully")
+	return nil
+}
+
+// GetBackupMetadata returns metadata about a backup
+func (s *Server) GetBackupMetadata(backupPath string) (*storage.BackupMetadata, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	return s.storage.GetBackupMetadata(backupPath)
+}
