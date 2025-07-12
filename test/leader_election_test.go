@@ -20,16 +20,16 @@ func TestLeaderElection(t *testing.T) {
 		tempDirs[i] = tempDir
 	}
 
-	// Node configurations
+	// Node configurations - use different ports from other tests
 	nodeConfigs := []*config.ServerConfig{
 		{
-			PeerAddress:     "localhost:19090",
-			ClientAddress:   "localhost:19091",
-			RaftPort:        19092,
+			PeerAddress:     "localhost:25090",
+			ClientAddress:   "localhost:25091",
+			RaftPort:        25092,
 			DataDir:         tempDirs[0],
 			ClusterInit:     true,
 			NodeID:          "1",
-			Peers:           []string{"localhost:19090", "localhost:20090", "localhost:21090"},
+			Peers:           []string{"localhost:25092", "localhost:26092", "localhost:27092"},
 			LogLevel:        "info",
 			RequestTimeout:  5 * time.Second,
 			HeartbeatTimeout: 500 * time.Millisecond,
@@ -40,13 +40,13 @@ func TestLeaderElection(t *testing.T) {
 			CompactionLevel: 1,
 		},
 		{
-			PeerAddress:     "localhost:20090",
-			ClientAddress:   "localhost:20091",
-			RaftPort:        20092,
+			PeerAddress:     "localhost:26090",
+			ClientAddress:   "localhost:26091",
+			RaftPort:        26092,
 			DataDir:         tempDirs[1],
 			ClusterInit:     false,
 			NodeID:          "2",
-			Peers:           []string{"localhost:19090", "localhost:20090", "localhost:21090"},
+			Peers:           []string{"localhost:25092", "localhost:26092", "localhost:27092"},
 			LogLevel:        "info",
 			RequestTimeout:  5 * time.Second,
 			HeartbeatTimeout: 500 * time.Millisecond,
@@ -57,13 +57,13 @@ func TestLeaderElection(t *testing.T) {
 			CompactionLevel: 1,
 		},
 		{
-			PeerAddress:     "localhost:21090",
-			ClientAddress:   "localhost:21091",
-			RaftPort:        21092,
+			PeerAddress:     "localhost:27090",
+			ClientAddress:   "localhost:27091",
+			RaftPort:        27092,
 			DataDir:         tempDirs[2],
 			ClusterInit:     false,
 			NodeID:          "3",
-			Peers:           []string{"localhost:19090", "localhost:20090", "localhost:21090"},
+			Peers:           []string{"localhost:25092", "localhost:26092", "localhost:27092"},
 			LogLevel:        "info",
 			RequestTimeout:  5 * time.Second,
 			HeartbeatTimeout: 500 * time.Millisecond,
@@ -122,4 +122,7 @@ func TestLeaderElection(t *testing.T) {
 			t.Errorf("Failed to stop server %d: %v", i+1, err)
 		}
 	}
+	
+	// Give servers time to fully shut down and release ports
+	time.Sleep(500 * time.Millisecond)
 }

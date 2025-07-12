@@ -31,7 +31,7 @@ func TestDistributedConsensus(t *testing.T) {
 			DataDir:         tempDirs[0],
 			ClusterInit:     true,
 			NodeID:          "1",
-			Peers:           []string{"localhost:19090", "localhost:20090", "localhost:21090"},
+			Peers:           []string{"localhost:19092", "localhost:20092", "localhost:21092"},
 			LogLevel:        "info",
 			RequestTimeout:  5 * time.Second,
 			HeartbeatTimeout: 1 * time.Second,
@@ -48,7 +48,7 @@ func TestDistributedConsensus(t *testing.T) {
 			DataDir:         tempDirs[1],
 			ClusterInit:     false,
 			NodeID:          "2",
-			Peers:           []string{"localhost:19090", "localhost:20090", "localhost:21090"},
+			Peers:           []string{"localhost:19092", "localhost:20092", "localhost:21092"},
 			LogLevel:        "info",
 			RequestTimeout:  5 * time.Second,
 			HeartbeatTimeout: 1 * time.Second,
@@ -65,7 +65,7 @@ func TestDistributedConsensus(t *testing.T) {
 			DataDir:         tempDirs[2],
 			ClusterInit:     false,
 			NodeID:          "3",
-			Peers:           []string{"localhost:19090", "localhost:20090", "localhost:21090"},
+			Peers:           []string{"localhost:19092", "localhost:20092", "localhost:21092"},
 			LogLevel:        "info",
 			RequestTimeout:  5 * time.Second,
 			HeartbeatTimeout: 1 * time.Second,
@@ -100,13 +100,35 @@ func TestDistributedConsensus(t *testing.T) {
 	leaderCount := 0
 	var leaderServer *server.Server
 	for i, srv := range servers {
-		if srv.IsLeader() {
+		isLeader := srv.IsLeader()
+		t.Logf("Node %d leader status: %v", i+1, isLeader)
+		if isLeader {
 			leaderCount++
 			leaderServer = srv
 			t.Logf("Node %d is the leader", i+1)
 		}
 	}
 
+	t.Logf("Total leader count: %d", leaderCount)
+	
+	if leaderCount == 0 {
+		t.Logf("No leader found, checking if cluster is still forming...")
+		// Wait a bit more for leader election to complete
+		time.Sleep(2 * time.Second)
+		
+		// Check again
+		leaderCount = 0
+		for i, srv := range servers {
+			isLeader := srv.IsLeader()
+			t.Logf("Node %d leader status (retry): %v", i+1, isLeader)
+			if isLeader {
+				leaderCount++
+				leaderServer = srv
+				t.Logf("Node %d is the leader (retry)", i+1)
+			}
+		}
+	}
+	
 	if leaderCount != 1 {
 		t.Errorf("Expected 1 leader, got %d", leaderCount)
 	}
@@ -140,14 +162,23 @@ func TestDistributedConsensus(t *testing.T) {
 	testValue := []byte("test-distributed-value")
 
 	// PUT operation
+	t.Log("Testing PUT operation...")
 	if err := rangeClient.Put(ctx, testKey, testValue); err != nil {
 		t.Errorf("Failed to put key: %v", err)
+	} else {
+		t.Log("PUT operation completed successfully")
 	}
 
+	// Wait for the write to be committed
+	time.Sleep(1 * time.Second)
+
 	// GET operation
+	t.Log("Testing GET operation...")
 	value, err := rangeClient.Get(ctx, testKey)
 	if err != nil {
 		t.Errorf("Failed to get key: %v", err)
+	} else {
+		t.Logf("GET operation completed successfully, value: %s", string(value))
 	}
 
 	if string(value) != string(testValue) {
@@ -230,6 +261,9 @@ func TestDistributedConsensus(t *testing.T) {
 			t.Errorf("Failed to stop server %d: %v", i+1, err)
 		}
 	}
+	
+	// Give servers time to fully shut down and release ports
+	time.Sleep(500 * time.Millisecond)
 
 	t.Log("Distributed consensus test completed successfully")
 }

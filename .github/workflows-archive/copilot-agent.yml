@@ -1,5 +1,12 @@
 # GitHub Copilot Agent Integration
 # This workflow enables automated development with GitHub Copilot
+#
+# ARCHIVED: This workflow has been archived and moved from .github/workflows/
+# to prevent it from running on a cronjob schedule. It could be useful in the
+# future for automated development tasks, but for now it's disabled to avoid
+# unnecessary automated runs.
+#
+# To re-enable: move this file back to .github/workflows/ directory
 name: Copilot Agent Development
 
 on:
