@@ -21,16 +21,16 @@ func TestMultiNodeCluster(t *testing.T) {
 		tempDirs[i] = tempDir
 	}
 
-	// Node configurations
+	// Node configurations - use different ports from distributed_consensus_test.go
 	nodeConfigs := []*config.ServerConfig{
 		{
-			PeerAddress:     "localhost:19080",
-			ClientAddress:   "localhost:19081",
-			RaftPort:        19092,
+			PeerAddress:     "localhost:22080",
+			ClientAddress:   "localhost:22081",
+			RaftPort:        22092,
 			DataDir:         tempDirs[0],
 			ClusterInit:     true,
 			NodeID:          "1",
-			Peers:           []string{"localhost:19080", "localhost:20080", "localhost:21080"},
+			Peers:           []string{"localhost:22080", "localhost:23080", "localhost:24080"},
 			LogLevel:        "info",
 			RequestTimeout:  5 * time.Second,
 			HeartbeatTimeout: 1 * time.Second,
@@ -41,13 +41,13 @@ func TestMultiNodeCluster(t *testing.T) {
 			CompactionLevel: 1,
 		},
 		{
-			PeerAddress:     "localhost:20080",
-			ClientAddress:   "localhost:20081",
-			RaftPort:        20092,
+			PeerAddress:     "localhost:23080",
+			ClientAddress:   "localhost:23081",
+			RaftPort:        23092,
 			DataDir:         tempDirs[1],
 			ClusterInit:     false,
 			NodeID:          "2",
-			Peers:           []string{"localhost:19080", "localhost:20080", "localhost:21080"},
+			Peers:           []string{"localhost:22080", "localhost:23080", "localhost:24080"},
 			LogLevel:        "info",
 			RequestTimeout:  5 * time.Second,
 			HeartbeatTimeout: 1 * time.Second,
@@ -58,13 +58,13 @@ func TestMultiNodeCluster(t *testing.T) {
 			CompactionLevel: 1,
 		},
 		{
-			PeerAddress:     "localhost:21080",
-			ClientAddress:   "localhost:21081",
-			RaftPort:        21092,
+			PeerAddress:     "localhost:24080",
+			ClientAddress:   "localhost:24081",
+			RaftPort:        24092,
 			DataDir:         tempDirs[2],
 			ClusterInit:     false,
 			NodeID:          "3",
-			Peers:           []string{"localhost:19080", "localhost:20080", "localhost:21080"},
+			Peers:           []string{"localhost:22080", "localhost:23080", "localhost:24080"},
 			LogLevel:        "info",
 			RequestTimeout:  5 * time.Second,
 			HeartbeatTimeout: 1 * time.Second,
@@ -121,6 +121,9 @@ func TestMultiNodeCluster(t *testing.T) {
 			t.Errorf("Failed to stop server %d: %v", i+1, err)
 		}
 	}
+	
+	// Give servers time to fully shut down and release ports
+	time.Sleep(500 * time.Millisecond)
 
 	t.Log("Multi-node cluster test completed successfully")
 }

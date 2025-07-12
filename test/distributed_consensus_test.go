@@ -230,6 +230,9 @@ func TestDistributedConsensus(t *testing.T) {
 			t.Errorf("Failed to stop server %d: %v", i+1, err)
 		}
 	}
+	
+	// Give servers time to fully shut down and release ports
+	time.Sleep(500 * time.Millisecond)
 
 	t.Log("Distributed consensus test completed successfully")
 }
