@@ -22,6 +22,10 @@ go.work
 /dist/
 /tmp/
 
+# Compiled binaries (anywhere in the repo)
+rangedb
+/bin/
+
 # Data directories
 /data/
 /logs/
