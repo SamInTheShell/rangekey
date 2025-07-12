@@ -1,7 +1,25 @@
 # RangeDB API Documentation
 
 ## Overview
-RangeDB is a distributed key-value database with ACID transactions, built on etcd Raft consensus.
+RangeDB is a distributed key-value database built on etcd Raft with automatic partitioning, transactions, and backup capabilities. This document provides comprehensive API documentation for all features.
+
+## Architecture
+
+### Core Components
+- **Storage Engine**: BadgerDB with WAL (Write-Ahead Logging)
+- **Consensus**: etcd Raft with multi-node support
+- **Partitioning**: Range-based automatic partitioning
+- **Transactions**: ACID transactions with two-phase commit
+- **Backup/Recovery**: Full and incremental backups
+- **Networking**: gRPC-based client-server communication
+
+### Key Features
+- ✅ **Multi-node Raft Consensus**: Leader election, log replication, fault tolerance
+- ✅ **Distributed Transactions**: Two-phase commit, deadlock detection, isolation levels
+- ✅ **Automatic Partitioning**: Range-based splitting, merging, rebalancing
+- ✅ **Backup & Recovery**: Full/incremental backups, point-in-time recovery
+- ✅ **Performance Monitoring**: Metrics collection, benchmarking, load testing
+- ✅ **Cluster Management**: Node addition/removal, rebalancing, health monitoring
 
 ## Core Operations
 

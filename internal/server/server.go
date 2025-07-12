@@ -459,12 +459,31 @@ func (s *Server) collectMetrics(ctx context.Context) {
 
 // checkRebalancing checks if partition rebalancing is needed
 func (s *Server) checkRebalancing(ctx context.Context) {
-	// TODO: Implement rebalancing logic
-	// This would include:
-	// - Checking partition load distribution
-	// - Detecting hotspots
-	// - Triggering partition splits/merges
-	// - Coordinating data migration
+	log.Println("Checking if partition rebalancing is needed...")
+	
+	// Calculate current partition loads
+	loads, err := s.partitions.CalculatePartitionLoad(ctx)
+	if err != nil {
+		log.Printf("Failed to calculate partition loads: %v", err)
+		return
+	}
+	
+	// Check if any partition is overloaded
+	needsRebalancing := false
+	for partitionID, load := range loads {
+		if load > 2.0 { // Threshold for rebalancing
+			log.Printf("Partition %s is overloaded (load: %.2f)", partitionID, load)
+			needsRebalancing = true
+		}
+	}
+	
+	// Trigger rebalancing if needed
+	if needsRebalancing {
+		log.Println("Triggering partition rebalancing...")
+		if err := s.partitions.RebalancePartitions(ctx); err != nil {
+			log.Printf("Failed to rebalance partitions: %v", err)
+		}
+	}
 }
 
 // IsLeader returns true if this node is the Raft leader

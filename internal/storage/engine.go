@@ -26,6 +26,9 @@ type Engine struct {
 	db     *badger.DB
 	wal    *WAL
 
+	// Backup manager
+	backupManager *BackupManager
+
 	// Lifecycle
 	mu       sync.RWMutex
 	started  bool
@@ -414,6 +417,103 @@ func (e *Engine) GetMetrics() *Metrics {
 	}
 }
 
+// GetAllKeys returns all keys in the storage engine
+func (e *Engine) GetAllKeys(ctx context.Context) ([][]byte, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.started {
+		return nil, fmt.Errorf("storage engine is not started")
+	}
+
+	var keys [][]byte
+	err := e.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false // Only need keys
+		iterator := txn.NewIterator(opts)
+		defer iterator.Close()
+
+		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
+			item := iterator.Item()
+			key := item.KeyCopy(nil)
+			keys = append(keys, key)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all keys: %w", err)
+	}
+
+	return keys, nil
+}
+
+// Backup creates a backup of the storage engine
+func (e *Engine) Backup(ctx context.Context, backupPath string) error {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.started {
+		return fmt.Errorf("storage engine is not started")
+	}
+
+	// Create backup manager if not exists
+	if e.backupManager == nil {
+		e.backupManager = NewBackupManager(e, nil)
+		if err := e.backupManager.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start backup manager: %w", err)
+		}
+	}
+
+	// Create full backup
+	metadata, err := e.backupManager.CreateFullBackup(ctx, backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to create backup: %w", err)
+	}
+
+	log.Printf("Backup created with ID: %s", metadata.ID)
+	return nil
+}
+
+// Restore restores the storage engine from a backup
+func (e *Engine) Restore(ctx context.Context, backupPath string) error {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if e.started {
+		return fmt.Errorf("cannot restore while storage engine is running")
+	}
+
+	// Create backup manager if not exists
+	if e.backupManager == nil {
+		e.backupManager = NewBackupManager(e, nil)
+		if err := e.backupManager.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start backup manager: %w", err)
+		}
+	}
+
+	// Restore from backup
+	if err := e.backupManager.RestoreFromBackup(ctx, backupPath); err != nil {
+		return fmt.Errorf("failed to restore from backup: %w", err)
+	}
+
+	log.Printf("Restore initiated from: %s", backupPath)
+	return nil
+}
+
+// GetBackupMetadata returns metadata about a backup
+func (e *Engine) GetBackupMetadata(backupPath string) (*BackupMetadata, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	// Create backup manager if not exists
+	if e.backupManager == nil {
+		e.backupManager = NewBackupManager(e, nil)
+	}
+
+	return e.backupManager.GetBackupMetadata(backupPath)
+}
+
 // replayWAL replays WAL entries to recover state
 func (e *Engine) replayWAL(ctx context.Context) error {
 	log.Println("Replaying WAL...")
@@ -531,106 +631,6 @@ func (e *Engine) compact() {
 	}
 
 	e.metrics.LastCompaction = time.Now()
-}
-
-// Backup creates a backup of the database to the specified file
-func (e *Engine) Backup(ctx context.Context, backupPath string) error {
-	if !e.started {
-		return fmt.Errorf("storage engine is not started")
-	}
-
-	log.Printf("Creating backup to %s", backupPath)
-
-	// Create backup file
-	file, err := os.Create(backupPath)
-	if err != nil {
-		return fmt.Errorf("failed to create backup file: %w", err)
-	}
-	defer file.Close()
-
-	// Use BadgerDB's backup functionality
-	_, err = e.db.Backup(file, 0)
-	if err != nil {
-		return fmt.Errorf("failed to create backup: %w", err)
-	}
-
-	log.Printf("Backup created successfully at %s", backupPath)
-	return nil
-}
-
-// Restore restores the database from a backup file
-func (e *Engine) Restore(ctx context.Context, backupPath string) error {
-	if e.started {
-		return fmt.Errorf("cannot restore while storage engine is running")
-	}
-
-	log.Printf("Restoring from backup %s", backupPath)
-
-	// Check if backup file exists
-	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
-		return fmt.Errorf("backup file does not exist: %s", backupPath)
-	}
-
-	// Open backup file
-	file, err := os.Open(backupPath)
-	if err != nil {
-		return fmt.Errorf("failed to open backup file: %w", err)
-	}
-	defer file.Close()
-
-	// Remove existing data directory if it exists
-	if _, err := os.Stat(e.config.DataDir); err == nil {
-		if err := os.RemoveAll(e.config.DataDir); err != nil {
-			return fmt.Errorf("failed to remove existing data directory: %w", err)
-		}
-	}
-
-	// Create new database for restore
-	opts := badger.DefaultOptions(e.config.DataDir)
-	opts.Logger = &badgerLogger{}
-	opts.SyncWrites = true
-
-	db, err := badger.Open(opts)
-	if err != nil {
-		return fmt.Errorf("failed to create database for restore: %w", err)
-	}
-	defer db.Close()
-
-	// Restore from backup
-	err = db.Load(file, 256)
-	if err != nil {
-		return fmt.Errorf("failed to restore from backup: %w", err)
-	}
-
-	log.Printf("Database restored successfully from %s", backupPath)
-	return nil
-}
-
-// GetBackupMetadata returns metadata about a backup file
-func (e *Engine) GetBackupMetadata(backupPath string) (*BackupMetadata, error) {
-	// Check if backup file exists
-	stat, err := os.Stat(backupPath)
-	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("backup file does not exist: %s", backupPath)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat backup file: %w", err)
-	}
-
-	return &BackupMetadata{
-		Path:         backupPath,
-		Size:         stat.Size(),
-		CreatedAt:    stat.ModTime(),
-		IsValid:      true, // Simple validation - could be enhanced
-	}, nil
-}
-
-// BackupMetadata contains information about a backup
-type BackupMetadata struct {
-	Path      string
-	Size      int64
-	CreatedAt time.Time
-	IsValid   bool
 }
 
 // Error definitions
