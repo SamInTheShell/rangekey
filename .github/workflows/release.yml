@@ -9,6 +9,11 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write    # Required for creating releases and uploading assets  
+  actions: read      # Required for downloading artifacts
+  id-token: write    # Required for OIDC authentication (if used)
+
 jobs:
   build:
     name: Build binaries
@@ -23,7 +28,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.2'
+        go-version: '1.24.5'
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -100,6 +105,8 @@ jobs:
         VERSION=${GITHUB_REF#refs/tags/}
         echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
         echo "RELEASE_NAME=RangeDB ${VERSION}" >> $GITHUB_OUTPUT
+        echo "Debug: GITHUB_REF=${GITHUB_REF}"
+        echo "Debug: VERSION=${VERSION}"
 
     - name: Generate release notes
       id: release_notes
@@ -159,7 +166,7 @@ jobs:
         EOF
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         name: ${{ steps.version.outputs.RELEASE_NAME }}
         body_path: release_notes.md
@@ -170,5 +177,6 @@ jobs:
           dist/release/checksums.txt
         draft: false
         prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        fail_on_unmatched_files: true
+        generate_release_notes: true
+        token: ${{ secrets.GITHUB_TOKEN }}
