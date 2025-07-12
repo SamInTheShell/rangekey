@@ -42,7 +42,7 @@ Download the `rangedb-*-windows-amd64.zip` file from the releases page and extra
 
 #### Prerequisites
 
-- Go 1.24.2 or later
+- Go 1.24.5 or later
 - Make (optional, for build automation)
 
 #### Building
