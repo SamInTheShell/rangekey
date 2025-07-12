@@ -3,7 +3,7 @@ version: '3.8'
 
 services:
   rangedb:
-    image: ghcr.io/samintheshell/rangekey:latest
+    build: .
     container_name: rangedb-single
     hostname: rangedb-single
     ports:

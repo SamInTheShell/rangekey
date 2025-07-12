@@ -3,7 +3,7 @@ version: '3.8'
 
 services:
   rangedb-1:
-    image: ghcr.io/samintheshell/rangekey:latest
+    build: .
     container_name: rangedb-1
     hostname: rangedb-1
     ports:
@@ -15,8 +15,8 @@ services:
       - RANGEDB_NODE_ID=1
       - RANGEDB_CLUSTER_SIZE=5
     command: >
-      rangedb server 
-      --peer-address=rangedb-1:8080 
+      rangedb server
+      --peer-address=rangedb-1:8080
       --client-address=rangedb-1:8081
       --peers=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
       --cluster-init
@@ -30,7 +30,7 @@ services:
       start_period: 10s
 
   rangedb-2:
-    image: ghcr.io/samintheshell/rangekey:latest
+    build: .
     container_name: rangedb-2
     hostname: rangedb-2
     ports:
@@ -42,8 +42,8 @@ services:
       - RANGEDB_NODE_ID=2
       - RANGEDB_CLUSTER_SIZE=5
     command: >
-      rangedb server 
-      --peer-address=rangedb-2:8080 
+      rangedb server
+      --peer-address=rangedb-2:8080
       --client-address=rangedb-2:8081
       --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
     networks:
@@ -59,7 +59,7 @@ services:
       start_period: 10s
 
   rangedb-3:
-    image: ghcr.io/samintheshell/rangekey:latest
+    build: .
     container_name: rangedb-3
     hostname: rangedb-3
     ports:
@@ -71,8 +71,8 @@ services:
       - RANGEDB_NODE_ID=3
       - RANGEDB_CLUSTER_SIZE=5
     command: >
-      rangedb server 
-      --peer-address=rangedb-3:8080 
+      rangedb server
+      --peer-address=rangedb-3:8080
       --client-address=rangedb-3:8081
       --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
     networks:
@@ -88,7 +88,7 @@ services:
       start_period: 10s
 
   rangedb-4:
-    image: ghcr.io/samintheshell/rangekey:latest
+    build: .
     container_name: rangedb-4
     hostname: rangedb-4
     ports:
@@ -100,8 +100,8 @@ services:
       - RANGEDB_NODE_ID=4
       - RANGEDB_CLUSTER_SIZE=5
     command: >
-      rangedb server 
-      --peer-address=rangedb-4:8080 
+      rangedb server
+      --peer-address=rangedb-4:8080
       --client-address=rangedb-4:8081
       --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
     networks:
@@ -117,7 +117,7 @@ services:
       start_period: 10s
 
   rangedb-5:
-    image: ghcr.io/samintheshell/rangekey:latest
+    build: .
     container_name: rangedb-5
     hostname: rangedb-5
     ports:
@@ -129,8 +129,8 @@ services:
       - RANGEDB_NODE_ID=5
       - RANGEDB_CLUSTER_SIZE=5
     command: >
-      rangedb server 
-      --peer-address=rangedb-5:8080 
+      rangedb server
+      --peer-address=rangedb-5:8080
       --client-address=rangedb-5:8081
       --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
     networks:
