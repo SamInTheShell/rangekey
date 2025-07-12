@@ -459,10 +459,97 @@ func (s *Server) collectMetrics(ctx context.Context) {
 
 // checkRebalancing checks if partition rebalancing is needed
 func (s *Server) checkRebalancing(ctx context.Context) {
-	// TODO: Implement rebalancing logic
-	// This would include:
-	// - Checking partition load distribution
-	// - Detecting hotspots
-	// - Triggering partition splits/merges
-	// - Coordinating data migration
+	log.Println("Checking if partition rebalancing is needed...")
+	
+	// Calculate current partition loads
+	loads, err := s.partitions.CalculatePartitionLoad(ctx)
+	if err != nil {
+		log.Printf("Failed to calculate partition loads: %v", err)
+		return
+	}
+	
+	// Check if any partition is overloaded
+	needsRebalancing := false
+	for partitionID, load := range loads {
+		if load > 2.0 { // Threshold for rebalancing
+			log.Printf("Partition %s is overloaded (load: %.2f)", partitionID, load)
+			needsRebalancing = true
+		}
+	}
+	
+	// Trigger rebalancing if needed
+	if needsRebalancing {
+		log.Println("Triggering partition rebalancing...")
+		if err := s.partitions.RebalancePartitions(ctx); err != nil {
+			log.Printf("Failed to rebalance partitions: %v", err)
+		}
+	}
+}
+
+// IsLeader returns true if this node is the Raft leader
+func (s *Server) IsLeader() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	if s.raftNode == nil {
+		return false
+	}
+	
+	return s.raftNode.IsLeader()
+}
+
+// GetConfig returns the server configuration
+func (s *Server) GetConfig() *config.ServerConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	return s.config
+}
+
+// Backup creates a backup of the server data
+func (s *Server) Backup(ctx context.Context, backupPath string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	if !s.started {
+		return fmt.Errorf("server is not started")
+	}
+	
+	log.Printf("Starting backup to %s", backupPath)
+	
+	// Create backup using storage engine
+	if err := s.storage.Backup(ctx, backupPath); err != nil {
+		return fmt.Errorf("failed to create backup: %w", err)
+	}
+	
+	log.Printf("Backup completed successfully")
+	return nil
+}
+
+// Restore restores the server from a backup
+func (s *Server) Restore(ctx context.Context, backupPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if s.started {
+		return fmt.Errorf("cannot restore while server is running - stop server first")
+	}
+	
+	log.Printf("Starting restore from %s", backupPath)
+	
+	// Restore using storage engine
+	if err := s.storage.Restore(ctx, backupPath); err != nil {
+		return fmt.Errorf("failed to restore from backup: %w", err)
+	}
+	
+	log.Printf("Restore completed successfully")
+	return nil
+}
+
+// GetBackupMetadata returns metadata about a backup
+func (s *Server) GetBackupMetadata(backupPath string) (*storage.BackupMetadata, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	return s.storage.GetBackupMetadata(backupPath)
 }

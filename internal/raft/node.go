@@ -40,6 +40,9 @@ type Node struct {
 	// State machine
 	stateMachine *StateMachine
 
+	// Transport layer
+	transport *Transport
+
 	// Commit and error channels
 	commitC     chan *commit
 	errorC      chan error
@@ -81,15 +84,36 @@ func NewNode(config *Config) (*Node, error) {
 	// Create state machine
 	stateMachine := NewStateMachine(config.Storage, commitC, errorC)
 
+	// Parse node ID to uint64
+	nodeID, err := strconv.ParseUint(config.NodeID, 10, 64)
+	if err != nil {
+		// If NodeID is not numeric, create a hash
+		nodeID = uint64(len(config.NodeID))
+		for _, b := range []byte(config.NodeID) {
+			nodeID = nodeID*31 + uint64(b)
+		}
+	}
+
+	// Create transport layer
+	transport := NewTransport(&TransportConfig{
+		ListenAddr:  config.ListenAddr,
+		NodeID:      nodeID,
+		DialTimeout: 5 * time.Second,
+	})
+
 	// Create the node
 	node := &Node{
 		config:       config,
 		raftStorage:  raftStorage,
 		stateMachine: stateMachine,
+		transport:    transport,
 		commitC:      commitC,
 		errorC:       errorC,
 		stopCh:       make(chan struct{}),
 	}
+
+	// Set node as the transport's message handler
+	transport.SetMessageHandler(node)
 
 	return node, nil
 }
@@ -104,6 +128,11 @@ func (n *Node) Start(ctx context.Context) error {
 	}
 
 	log.Printf("Starting Raft node: %s", n.config.NodeID)
+
+	// Start the transport layer first
+	if err := n.transport.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start transport layer: %w", err)
+	}
 
 	// Parse node ID to uint64
 	nodeID, err := strconv.ParseUint(n.config.NodeID, 10, 64)
@@ -126,7 +155,7 @@ func (n *Node) Start(ctx context.Context) error {
 		Logger:          &raftLogger{},
 	}
 
-	// Create initial peer list
+	// Create initial peer list and add them to transport
 	var peers []raft.Peer
 	if len(n.config.Peers) > 0 {
 		for i, peer := range n.config.Peers {
@@ -138,6 +167,11 @@ func (n *Node) Start(ctx context.Context) error {
 				ID:      peerID,
 				Context: []byte(peer),
 			})
+			
+			// Add peer to transport layer
+			if peer != n.config.NodeID {
+				n.transport.AddPeer(peerID, peer)
+			}
 		}
 	} else {
 		// Single node cluster
@@ -180,6 +214,11 @@ func (n *Node) Stop(ctx context.Context) error {
 	}
 
 	log.Println("Stopping Raft node...")
+
+	// Stop the transport layer
+	if n.transport != nil {
+		n.transport.Stop(ctx)
+	}
 
 	// Stop the state machine
 	if n.stateMachine != nil {
@@ -373,6 +412,65 @@ func (l *raftLogger) Panicf(format string, v ...interface{}) {
 	log.Panicf(format, v...)
 }
 
+// sendMessage sends a message to another node
+func (n *Node) sendMessage(ctx context.Context, msg raftpb.Message) error {
+	if n.transport == nil {
+		return fmt.Errorf("transport layer not available")
+	}
+	
+	return n.transport.SendMessage(ctx, msg.To, &msg)
+}
+
+// HandleMessage implements MessageHandler interface
+func (n *Node) HandleMessage(ctx context.Context, msg *raftpb.Message) error {
+	return n.node.Step(ctx, *msg)
+}
+
+// AddNode adds a new node to the cluster
+func (n *Node) AddNode(ctx context.Context, nodeID uint64, address string) error {
+	if n.transport != nil {
+		n.transport.AddPeer(nodeID, address)
+	}
+	
+	// Add node to Raft cluster
+	cc := raftpb.ConfChange{
+		Type:    raftpb.ConfChangeAddNode,
+		NodeID:  nodeID,
+		Context: []byte(address),
+	}
+	
+	return n.node.ProposeConfChange(ctx, cc)
+}
+
+// RemoveNode removes a node from the cluster
+func (n *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
+	if n.transport != nil {
+		n.transport.RemovePeer(nodeID)
+	}
+	
+	// Remove node from Raft cluster
+	cc := raftpb.ConfChange{
+		Type:   raftpb.ConfChangeRemoveNode,
+		NodeID: nodeID,
+	}
+	
+	return n.node.ProposeConfChange(ctx, cc)
+}
+
+// CreateSnapshot creates a snapshot of the current state
+func (n *Node) CreateSnapshot(ctx context.Context) error {
+	// TODO: Implement snapshot creation
+	log.Printf("Creating snapshot for node %s", n.config.NodeID)
+	return nil
+}
+
+// RestoreSnapshot restores from a snapshot
+func (n *Node) RestoreSnapshot(ctx context.Context, snapshot []byte) error {
+	// TODO: Implement snapshot restoration
+	log.Printf("Restoring snapshot for node %s", n.config.NodeID)
+	return nil
+}
+
 // run is the main Raft loop
 func (n *Node) run() {
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -402,10 +500,13 @@ func (n *Node) run() {
 				continue
 			}
 
-			// Send messages (TODO: implement transport layer)
-			// For now, we'll skip message sending for single-node deployment
+			// Send messages to other nodes
 			for _, msg := range rd.Messages {
-				log.Printf("Would send message: %+v", msg)
+				go func(msg raftpb.Message) {
+					if err := n.sendMessage(context.Background(), msg); err != nil {
+						log.Printf("Failed to send message to node %d: %v", msg.To, err)
+					}
+				}(msg)
 			}
 
 			// Apply committed entries

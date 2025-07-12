@@ -208,6 +208,19 @@ type Transaction struct {
 	id     string
 }
 
+// ID returns the transaction ID
+func (t *Transaction) ID() string {
+	return t.id
+}
+
+// NewTransactionFromID creates a transaction with an existing ID
+func (c *Client) NewTransactionFromID(id string) *Transaction {
+	return &Transaction{
+		client: c,
+		id:     id,
+	}
+}
+
 // BeginTransaction starts a new transaction
 func (c *Client) BeginTransaction(ctx context.Context) (*Transaction, error) {
 	if c.client == nil {

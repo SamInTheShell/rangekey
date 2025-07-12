@@ -369,6 +369,19 @@ func (s *Store) ListPartitions(ctx context.Context) ([]PartitionInfo, error) {
 	return partitions, nil
 }
 
+// DeletePartitionInfo deletes partition information
+func (s *Store) DeletePartitionInfo(ctx context.Context, partitionID string) error {
+	if !s.started {
+		return fmt.Errorf("metadata store is not started")
+	}
+
+	key := fmt.Sprintf("%s%s", PartitionPrefix, partitionID)
+	
+	return s.db.Update(func(txn *badger.Txn) error {
+		return txn.Delete([]byte(key))
+	})
+}
+
 // StoreRaftGroupInfo stores Raft group information
 func (s *Store) StoreRaftGroupInfo(ctx context.Context, raftGroupInfo *RaftGroupInfo) error {
 	if !s.started {

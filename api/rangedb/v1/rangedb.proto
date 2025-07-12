@@ -23,6 +23,11 @@ service RangeDB {
   // Cluster operations
   rpc GetClusterInfo(GetClusterInfoRequest) returns (GetClusterInfoResponse);
   rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+  
+  // Backup and restore operations
+  rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
+  rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
+  rpc GetBackupMetadata(GetBackupMetadataRequest) returns (GetBackupMetadataResponse);
 }
 
 // Basic key-value pair
@@ -179,4 +184,44 @@ enum NodeStatus {
   NODE_STOPPING = 3;
   NODE_STOPPED = 4;
   NODE_FAILED = 5;
+}
+
+// Backup and restore operations
+message CreateBackupRequest {
+  string backup_path = 1;
+  optional bool include_metadata = 2;
+}
+
+message CreateBackupResponse {
+  bool success = 1;
+  string backup_path = 2;
+  int64 backup_size = 3;
+  int64 created_timestamp = 4;
+}
+
+message RestoreBackupRequest {
+  string backup_path = 1;
+  optional bool force = 2;
+}
+
+message RestoreBackupResponse {
+  bool success = 1;
+  string message = 2;
+  int64 restored_timestamp = 3;
+}
+
+message GetBackupMetadataRequest {
+  string backup_path = 1;
+}
+
+message GetBackupMetadataResponse {
+  bool exists = 1;
+  BackupMetadata metadata = 2;
+}
+
+message BackupMetadata {
+  string path = 1;
+  int64 size = 2;
+  int64 created_timestamp = 3;
+  bool is_valid = 4;
 }

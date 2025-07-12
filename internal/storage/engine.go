@@ -26,6 +26,9 @@ type Engine struct {
 	db     *badger.DB
 	wal    *WAL
 
+	// Backup manager
+	backupManager *BackupManager
+
 	// Lifecycle
 	mu       sync.RWMutex
 	started  bool
@@ -412,6 +415,103 @@ func (e *Engine) GetMetrics() *Metrics {
 		LastFlush:       e.metrics.LastFlush,
 		LastCompaction:  e.metrics.LastCompaction,
 	}
+}
+
+// GetAllKeys returns all keys in the storage engine
+func (e *Engine) GetAllKeys(ctx context.Context) ([][]byte, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.started {
+		return nil, fmt.Errorf("storage engine is not started")
+	}
+
+	var keys [][]byte
+	err := e.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false // Only need keys
+		iterator := txn.NewIterator(opts)
+		defer iterator.Close()
+
+		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
+			item := iterator.Item()
+			key := item.KeyCopy(nil)
+			keys = append(keys, key)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all keys: %w", err)
+	}
+
+	return keys, nil
+}
+
+// Backup creates a backup of the storage engine
+func (e *Engine) Backup(ctx context.Context, backupPath string) error {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.started {
+		return fmt.Errorf("storage engine is not started")
+	}
+
+	// Create backup manager if not exists
+	if e.backupManager == nil {
+		e.backupManager = NewBackupManager(e, nil)
+		if err := e.backupManager.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start backup manager: %w", err)
+		}
+	}
+
+	// Create full backup
+	metadata, err := e.backupManager.CreateFullBackup(ctx, backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to create backup: %w", err)
+	}
+
+	log.Printf("Backup created with ID: %s", metadata.ID)
+	return nil
+}
+
+// Restore restores the storage engine from a backup
+func (e *Engine) Restore(ctx context.Context, backupPath string) error {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if e.started {
+		return fmt.Errorf("cannot restore while storage engine is running")
+	}
+
+	// Create backup manager if not exists
+	if e.backupManager == nil {
+		e.backupManager = NewBackupManager(e, nil)
+		if err := e.backupManager.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start backup manager: %w", err)
+		}
+	}
+
+	// Restore from backup
+	if err := e.backupManager.RestoreFromBackup(ctx, backupPath); err != nil {
+		return fmt.Errorf("failed to restore from backup: %w", err)
+	}
+
+	log.Printf("Restore initiated from: %s", backupPath)
+	return nil
+}
+
+// GetBackupMetadata returns metadata about a backup
+func (e *Engine) GetBackupMetadata(backupPath string) (*BackupMetadata, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	// Create backup manager if not exists
+	if e.backupManager == nil {
+		e.backupManager = NewBackupManager(e, nil)
+	}
+
+	return e.backupManager.GetBackupMetadata(backupPath)
 }
 
 // replayWAL replays WAL entries to recover state
