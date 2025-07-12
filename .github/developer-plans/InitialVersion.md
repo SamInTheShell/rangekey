@@ -309,6 +309,8 @@ Build a distributed key-value database using etcd v3 as foundation with multi-ra
   - [x] GitHub Container Registry integration
   - [x] Docker Compose configurations for multi-node clusters
   - [x] Container deployment documentation
+  - [x] Single binary container with scratch base image
+  - [x] Multi-architecture container support (amd64, arm64)
 
 ## Technical Specifications
 

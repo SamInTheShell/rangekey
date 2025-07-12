@@ -76,7 +76,7 @@ jobs:
         docker build -t rangedb-test .
         
         # Test that the binary works
-        docker run --rm rangedb-test rangedb --help
+        docker run --rm rangedb-test --help
         
         # Test version command
-        docker run --rm rangedb-test rangedb version || echo "Version command not available"
+        docker run --rm rangedb-test version || echo "Version command not available"

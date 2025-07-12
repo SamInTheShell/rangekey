@@ -1,34 +1,15 @@
-# Multi-stage build for RangeDB
-FROM golang:1.24-bookworm AS builder
-
-# Set working directory
-WORKDIR /build
-
-# Copy go mod files first for layer caching
+FROM golang:1.24 AS go-builder
+WORKDIR /usr/src/app
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
-
-# Copy source code
 COPY . .
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -v -o /usr/local/bin/main ./cmd/rangedb
+RUN chmod +x /usr/local/bin/main
 
-# Build the binary as a static binary with no external dependencies
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags "-w -s" -o rangedb ./cmd/rangedb
-
-# Runtime stage using distroless
-FROM gcr.io/distroless/static:nonroot
-
-# Copy binary from builder
-COPY --from=builder /build/rangedb /usr/local/bin/rangedb
-
-# Set working directory
+# This produces a very tiny image with only the binary and no dependencies.
+FROM scratch
+COPY --from=go-builder /usr/local/bin/main /usr/local/bin/main
+USER 1000:1000
 WORKDIR /data
-
-# Expose ports
-# 8080 - peer communication
-# 8081 - client API
-EXPOSE 8080 8081
-
-# Default command
-CMD ["/usr/local/bin/rangedb", "server", "--cluster-init"]
+ENTRYPOINT ["/usr/local/bin/main"]
