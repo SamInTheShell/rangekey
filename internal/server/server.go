@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/samintheshell/rangekey/api/rangedb/v1"
+	"github.com/samintheshell/rangekey/client"
 	"github.com/samintheshell/rangekey/internal/config"
 	"github.com/samintheshell/rangekey/internal/storage"
 	"github.com/samintheshell/rangekey/internal/raft"
@@ -84,6 +87,22 @@ func NewServer(cfg *config.ServerConfig) (*Server, error) {
 		Metadata:          metadataStore,
 	})
 
+	// Build peer list - for joining nodes, convert client addresses to peer addresses
+	var peers []string
+	if len(cfg.JoinAddresses) > 0 {
+		// Convert client addresses (port 8081) to peer addresses (port 8080)
+		for _, clientAddr := range cfg.JoinAddresses {
+			host, _, err := net.SplitHostPort(clientAddr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid join address %s: %w", clientAddr, err)
+			}
+			peerAddr := fmt.Sprintf("%s:8080", host)
+			peers = append(peers, peerAddr)
+		}
+	} else {
+		peers = cfg.Peers
+	}
+
 	// Initialize Raft node
 	raftNode, err := raft.NewNode(&raft.Config{
 		NodeID:           cfg.GetNodeID(),
@@ -94,7 +113,7 @@ func NewServer(cfg *config.ServerConfig) (*Server, error) {
 		Storage:          storageEngine,
 		Metadata:         metadataStore,
 		Partitions:       partitionManager,
-		Peers:            cfg.Peers,
+		Peers:            peers,
 		Join:             len(cfg.JoinAddresses) > 0,
 	})
 	if err != nil {
@@ -311,15 +330,83 @@ func (s *Server) initializeCluster(ctx context.Context) error {
 func (s *Server) joinCluster(ctx context.Context) error {
 	log.Printf("Joining cluster via: %v", s.config.GetJoinList())
 
-	// TODO: Implement cluster join logic
-	// This would involve:
-	// 1. Contacting one of the join addresses
-	// 2. Requesting to join the cluster
-	// 3. Receiving cluster configuration
-	// 4. Setting up partitions as assigned
-	// 5. Starting replication
+	joinAddresses := s.config.GetJoinList()
+	if len(joinAddresses) == 0 {
+		return fmt.Errorf("no join addresses provided")
+	}
 
-	return fmt.Errorf("cluster join not implemented yet")
+	// Try to contact each join address until one succeeds
+	for _, address := range joinAddresses {
+		err := s.attemptJoinCluster(ctx, address)
+		if err == nil {
+			log.Printf("Successfully joined cluster via %s", address)
+			return nil
+		}
+		log.Printf("Failed to join cluster via %s: %v", address, err)
+	}
+
+	return fmt.Errorf("failed to join cluster via any of the provided addresses")
+}
+
+// attemptJoinCluster attempts to join a cluster via a specific address
+func (s *Server) attemptJoinCluster(ctx context.Context, address string) error {
+	// Import client package
+	clientConfig := &client.Config{
+		Address:        address,
+		RequestTimeout: 30 * time.Second,
+		MaxRetries:     3,
+	}
+
+	// Create client
+	c, err := client.NewClient(clientConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %w", err)
+	}
+
+	// Connect to the cluster node
+	if err := c.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect to cluster node: %w", err)
+	}
+	defer c.Close()
+
+	// Request to join the cluster
+	joinResponse, err := c.JoinCluster(ctx, &v1.JoinClusterRequest{
+		NodeId:        s.config.GetNodeID(),
+		PeerAddress:   s.config.PeerAddress,
+		ClientAddress: s.config.ClientAddress,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to request cluster join: %w", err)
+	}
+
+	if !joinResponse.Success {
+		return fmt.Errorf("cluster join rejected: %s", joinResponse.Message)
+	}
+
+	// Store the cluster configuration we received
+	clusterConfig := &metadata.ClusterConfig{
+		ID:        joinResponse.ClusterId,
+		Nodes:     make([]metadata.NodeInfo, len(joinResponse.Nodes)),
+		UpdatedAt: time.Now(),
+	}
+
+	for i, node := range joinResponse.Nodes {
+		clusterConfig.Nodes[i] = metadata.NodeInfo{
+			ID:            node.NodeId,
+			PeerAddress:   node.PeerAddress,
+			ClientAddress: node.ClientAddress,
+			Status:        metadata.NodeStatusActive,
+			JoinedAt:      time.Now(),
+		}
+	}
+
+	// Store the cluster configuration
+	if err := s.metadata.StoreClusterConfig(ctx, clusterConfig); err != nil {
+		return fmt.Errorf("failed to store cluster config: %w", err)
+	}
+
+	log.Printf("Successfully joined cluster %s with %d nodes", joinResponse.ClusterId, len(joinResponse.Nodes))
+	return nil
 }
 
 // startStandalone starts as a standalone node
@@ -460,14 +547,14 @@ func (s *Server) collectMetrics(ctx context.Context) {
 // checkRebalancing checks if partition rebalancing is needed
 func (s *Server) checkRebalancing(ctx context.Context) {
 	log.Println("Checking if partition rebalancing is needed...")
-	
+
 	// Calculate current partition loads
 	loads, err := s.partitions.CalculatePartitionLoad(ctx)
 	if err != nil {
 		log.Printf("Failed to calculate partition loads: %v", err)
 		return
 	}
-	
+
 	// Check if any partition is overloaded
 	needsRebalancing := false
 	for partitionID, load := range loads {
@@ -476,7 +563,7 @@ func (s *Server) checkRebalancing(ctx context.Context) {
 			needsRebalancing = true
 		}
 	}
-	
+
 	// Trigger rebalancing if needed
 	if needsRebalancing {
 		log.Println("Triggering partition rebalancing...")
@@ -490,11 +577,11 @@ func (s *Server) checkRebalancing(ctx context.Context) {
 func (s *Server) IsLeader() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if s.raftNode == nil {
 		return false
 	}
-	
+
 	return s.raftNode.IsLeader()
 }
 
@@ -502,7 +589,7 @@ func (s *Server) IsLeader() bool {
 func (s *Server) GetConfig() *config.ServerConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	return s.config
 }
 
@@ -510,18 +597,18 @@ func (s *Server) GetConfig() *config.ServerConfig {
 func (s *Server) Backup(ctx context.Context, backupPath string) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if !s.started {
 		return fmt.Errorf("server is not started")
 	}
-	
+
 	log.Printf("Starting backup to %s", backupPath)
-	
+
 	// Create backup using storage engine
 	if err := s.storage.Backup(ctx, backupPath); err != nil {
 		return fmt.Errorf("failed to create backup: %w", err)
 	}
-	
+
 	log.Printf("Backup completed successfully")
 	return nil
 }
@@ -530,18 +617,18 @@ func (s *Server) Backup(ctx context.Context, backupPath string) error {
 func (s *Server) Restore(ctx context.Context, backupPath string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if s.started {
 		return fmt.Errorf("cannot restore while server is running - stop server first")
 	}
-	
+
 	log.Printf("Starting restore from %s", backupPath)
-	
+
 	// Restore using storage engine
 	if err := s.storage.Restore(ctx, backupPath); err != nil {
 		return fmt.Errorf("failed to restore from backup: %w", err)
 	}
-	
+
 	log.Printf("Restore completed successfully")
 	return nil
 }
@@ -550,6 +637,6 @@ func (s *Server) Restore(ctx context.Context, backupPath string) error {
 func (s *Server) GetBackupMetadata(backupPath string) (*storage.BackupMetadata, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	return s.storage.GetBackupMetadata(backupPath)
 }

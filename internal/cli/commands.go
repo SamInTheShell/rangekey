@@ -73,6 +73,10 @@ Examples:
 				Usage: "Log level (debug, info, warn, error)",
 				Value: "info",
 			},
+			&cli.StringFlag{
+				Name:  "node-id",
+				Usage: "Unique node identifier",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			// Build server configuration with defaults
@@ -87,6 +91,13 @@ Examples:
 			cfg.ClusterInit = cmd.Bool("cluster-init")
 			cfg.RaftPort = int(cmd.Int("raft-port"))
 			cfg.LogLevel = cmd.String("log-level")
+
+			// Set NodeID from command line flag, environment variable, or default
+			if nodeID := cmd.String("node-id"); nodeID != "" {
+				cfg.NodeID = nodeID
+			} else if nodeID := os.Getenv("RANGEDB_NODE_ID"); nodeID != "" {
+				cfg.NodeID = nodeID
+			}
 
 			// Validate configuration
 			if err := cfg.Validate(); err != nil {
@@ -461,10 +472,10 @@ func NewBatchCommand() *cli.Command {
 				Usage:     "Batch put operations",
 				ArgsUsage: "<key1> <value1> [key2 value2 ...]",
 				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "address",
-						Usage: "Server address",
-						Value: "localhost:8081",
+					&cli.StringSliceFlag{
+						Name:  "endpoints",
+						Usage: "Comma-separated list of server endpoints",
+						Value: []string{"localhost:8081"},
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -473,7 +484,10 @@ func NewBatchCommand() *cli.Command {
 						return fmt.Errorf("usage: rangedb batch put <key1> <value1> [key2 value2 ...]")
 					}
 
-					address := cmd.String("address")
+					endpoints := cmd.StringSlice("endpoints")
+
+					// Use first endpoint for compatibility
+					address := endpoints[0]
 
 					// Create client
 					client, err := client.NewClient(&client.Config{
@@ -532,14 +546,17 @@ func NewAdminCommand() *cli.Command {
 						Name:  "status",
 						Usage: "Show cluster status",
 						Flags: []cli.Flag{
-							&cli.StringFlag{
-								Name:  "address",
-								Usage: "Server address",
-								Value: "localhost:8081",
+							&cli.StringSliceFlag{
+								Name:  "endpoints",
+								Usage: "Comma-separated list of server endpoints",
+								Value: []string{"localhost:8081"},
 							},
 						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							address := cmd.String("address")
+							endpoints := cmd.StringSlice("endpoints")
+
+							// Use first endpoint for compatibility with existing client
+							address := endpoints[0]
 
 							// Create client
 							client, err := client.NewClient(&client.Config{
@@ -1508,7 +1525,7 @@ type REPLSession struct {
 // Run starts the REPL session
 func (r *REPLSession) Run(ctx context.Context) error {
 	scanner := bufio.NewScanner(os.Stdin)
-	
+
 	for {
 		// Show prompt
 		prompt := "rangedb> "
@@ -1516,31 +1533,31 @@ func (r *REPLSession) Run(ctx context.Context) error {
 			prompt = fmt.Sprintf("rangedb(txn:%s)> ", r.currentTxn.ID()[:8])
 		}
 		fmt.Print(prompt)
-		
+
 		// Read input
 		if !scanner.Scan() {
 			break
 		}
-		
+
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
-		
+
 		// Add to history
 		r.commandHistory = append(r.commandHistory, line)
-		
+
 		// Process command
 		if err := r.processCommand(ctx, line); err != nil {
 			fmt.Printf("Error: %v\n", err)
 		}
 	}
-	
+
 	// Check for scanner errors
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("input error: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -1551,10 +1568,10 @@ func (r *REPLSession) processCommand(ctx context.Context, input string) error {
 	if len(parts) == 0 {
 		return nil
 	}
-	
+
 	command := strings.ToLower(parts[0])
 	args := parts[1:]
-	
+
 	switch command {
 	case "help", "h":
 		r.showHelp()
@@ -1603,7 +1620,7 @@ func (r *REPLSession) parseCommand(input string) []string {
 	var current strings.Builder
 	var inQuote bool
 	var quoteChar rune
-	
+
 	for _, char := range input {
 		switch char {
 		case '"', '\'':
@@ -1627,11 +1644,11 @@ func (r *REPLSession) parseCommand(input string) []string {
 			current.WriteRune(char)
 		}
 	}
-	
+
 	if current.Len() > 0 {
 		parts = append(parts, current.String())
 	}
-	
+
 	return parts
 }
 
@@ -1692,13 +1709,13 @@ func (r *REPLSession) showStatus(ctx context.Context) error {
 	fmt.Printf("Session Status:\n")
 	fmt.Printf("  Timeout: %v\n", r.timeout)
 	fmt.Printf("  Commands executed: %d\n", len(r.commandHistory))
-	
+
 	if r.currentTxn != nil {
 		fmt.Printf("  Active transaction: %s\n", r.currentTxn.ID())
 	} else {
 		fmt.Printf("  Active transaction: none\n")
 	}
-	
+
 	return nil
 }
 
@@ -1707,22 +1724,22 @@ func (r *REPLSession) handleGet(ctx context.Context, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: get <key>")
 	}
-	
+
 	key := args[0]
-	
+
 	var value []byte
 	var err error
-	
+
 	if r.currentTxn != nil {
 		value, err = r.currentTxn.Get(ctx, key)
 	} else {
 		value, err = r.client.Get(ctx, key)
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to get key %s: %w", key, err)
 	}
-	
+
 	fmt.Printf("%s\n", string(value))
 	return nil
 }
@@ -1732,22 +1749,22 @@ func (r *REPLSession) handlePut(ctx context.Context, args []string) error {
 	if len(args) != 2 {
 		return fmt.Errorf("usage: put <key> <value>")
 	}
-	
+
 	key := args[0]
 	value := args[1]
-	
+
 	var err error
-	
+
 	if r.currentTxn != nil {
 		err = r.currentTxn.Put(ctx, key, []byte(value))
 	} else {
 		err = r.client.Put(ctx, key, []byte(value))
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to put key %s: %w", key, err)
 	}
-	
+
 	fmt.Printf("OK\n")
 	return nil
 }
@@ -1757,21 +1774,21 @@ func (r *REPLSession) handleDelete(ctx context.Context, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: delete <key>")
 	}
-	
+
 	key := args[0]
-	
+
 	var err error
-	
+
 	if r.currentTxn != nil {
 		err = r.currentTxn.Delete(ctx, key)
 	} else {
 		err = r.client.Delete(ctx, key)
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to delete key %s: %w", key, err)
 	}
-	
+
 	fmt.Printf("OK\n")
 	return nil
 }
@@ -1781,11 +1798,11 @@ func (r *REPLSession) handleRange(ctx context.Context, args []string) error {
 	if len(args) < 2 || len(args) > 3 {
 		return fmt.Errorf("usage: range <start> <end> [limit]")
 	}
-	
+
 	startKey := args[0]
 	endKey := args[1]
 	limit := 100
-	
+
 	if len(args) == 3 {
 		var err error
 		limit, err = strconv.Atoi(args[2])
@@ -1793,16 +1810,16 @@ func (r *REPLSession) handleRange(ctx context.Context, args []string) error {
 			return fmt.Errorf("invalid limit: %s", args[2])
 		}
 	}
-	
+
 	var results map[string][]byte
 	var err error
-	
+
 	if r.currentTxn != nil {
 		kvs, err := r.currentTxn.Range(ctx, startKey, endKey, limit)
 		if err != nil {
 			return fmt.Errorf("failed to get range: %w", err)
 		}
-		
+
 		results = make(map[string][]byte)
 		for _, kv := range kvs {
 			results[string(kv.Key)] = kv.Value
@@ -1813,16 +1830,16 @@ func (r *REPLSession) handleRange(ctx context.Context, args []string) error {
 			return fmt.Errorf("failed to get range: %w", err)
 		}
 	}
-	
+
 	if len(results) == 0 {
 		fmt.Println("No results found")
 		return nil
 	}
-	
+
 	for key, value := range results {
 		fmt.Printf("%s: %s\n", key, string(value))
 	}
-	
+
 	return nil
 }
 
@@ -1831,12 +1848,12 @@ func (r *REPLSession) handleBegin(ctx context.Context, args []string) error {
 	if r.currentTxn != nil {
 		return fmt.Errorf("transaction already active: %s", r.currentTxn.ID())
 	}
-	
+
 	txn, err := r.client.BeginTransaction(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	
+
 	r.currentTxn = txn
 	fmt.Printf("Transaction started: %s\n", txn.ID())
 	return nil
@@ -1847,11 +1864,11 @@ func (r *REPLSession) handleCommit(ctx context.Context, args []string) error {
 	if r.currentTxn == nil {
 		return fmt.Errorf("no active transaction")
 	}
-	
+
 	if err := r.currentTxn.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	
+
 	fmt.Printf("Transaction %s committed\n", r.currentTxn.ID())
 	r.currentTxn = nil
 	return nil
@@ -1862,11 +1879,11 @@ func (r *REPLSession) handleRollback(ctx context.Context, args []string) error {
 	if r.currentTxn == nil {
 		return fmt.Errorf("no active transaction")
 	}
-	
+
 	if err := r.currentTxn.Rollback(ctx); err != nil {
 		return fmt.Errorf("failed to rollback transaction: %w", err)
 	}
-	
+
 	fmt.Printf("Transaction %s rolled back\n", r.currentTxn.ID())
 	r.currentTxn = nil
 	return nil
@@ -1877,19 +1894,19 @@ func (r *REPLSession) handleBatch(ctx context.Context, args []string) error {
 	if len(args) < 3 || args[0] != "put" {
 		return fmt.Errorf("usage: batch put <key1> <value1> [key2 value2 ...]")
 	}
-	
+
 	args = args[1:] // Remove "put"
-	
+
 	if len(args) < 2 || len(args)%2 != 0 {
 		return fmt.Errorf("usage: batch put <key1> <value1> [key2 value2 ...]")
 	}
-	
+
 	// Create batch operations
 	var operations []*v1.BatchOperation
 	for i := 0; i < len(args); i += 2 {
 		key := args[i]
 		value := args[i+1]
-		
+
 		operations = append(operations, &v1.BatchOperation{
 			Operation: &v1.BatchOperation_Put{
 				Put: &v1.PutRequest{
@@ -1899,17 +1916,17 @@ func (r *REPLSession) handleBatch(ctx context.Context, args []string) error {
 			},
 		})
 	}
-	
+
 	// Execute batch using the underlying client
 	realClient, ok := r.client.(*realClient)
 	if !ok {
 		return fmt.Errorf("batch operations not supported in this session")
 	}
-	
+
 	if err := realClient.client.Batch(ctx, operations); err != nil {
 		return fmt.Errorf("failed to execute batch: %w", err)
 	}
-	
+
 	fmt.Printf("Batch operation completed successfully (%d operations)\n", len(operations))
 	return nil
 }
@@ -1919,10 +1936,10 @@ func (r *REPLSession) handleAdmin(ctx context.Context, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: admin <subcommand>")
 	}
-	
+
 	subcommand := args[0]
 	subargs := args[1:]
-	
+
 	switch subcommand {
 	case "cluster":
 		return r.handleAdminCluster(ctx, subargs)
@@ -1942,7 +1959,7 @@ func (r *REPLSession) handleAdminCluster(ctx context.Context, args []string) err
 	if len(args) < 1 {
 		return fmt.Errorf("usage: admin cluster <status>")
 	}
-	
+
 	switch args[0] {
 	case "status":
 		// Get cluster info using the underlying client
@@ -1950,18 +1967,18 @@ func (r *REPLSession) handleAdminCluster(ctx context.Context, args []string) err
 		if !ok {
 			return fmt.Errorf("cluster operations not supported in this session")
 		}
-		
+
 		clusterInfo, err := realClient.client.GetClusterInfo(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get cluster info: %w", err)
 		}
-		
+
 		fmt.Printf("Cluster Status:\n")
 		fmt.Printf("  Cluster ID: %s\n", clusterInfo.ClusterId)
 		fmt.Printf("  Replication Factor: %d\n", clusterInfo.ReplicationFactor)
 		fmt.Printf("  Number of Partitions: %d\n", clusterInfo.NumPartitions)
 		fmt.Printf("  Nodes (%d):\n", len(clusterInfo.Nodes))
-		
+
 		for i, node := range clusterInfo.Nodes {
 			fmt.Printf("    %d. %s\n", i+1, node.NodeId)
 			fmt.Printf("       Client Address: %s\n", node.ClientAddress)
@@ -1969,7 +1986,7 @@ func (r *REPLSession) handleAdminCluster(ctx context.Context, args []string) err
 			fmt.Printf("       Status: %s\n", node.Status)
 			fmt.Printf("       Partitions: %v\n", node.PartitionIds)
 		}
-		
+
 		return nil
 	default:
 		return fmt.Errorf("unknown cluster subcommand: %s", args[0])
@@ -1981,33 +1998,33 @@ func (r *REPLSession) handleAdminConfig(ctx context.Context, args []string) erro
 	if len(args) < 1 {
 		return fmt.Errorf("usage: admin config <get|set>")
 	}
-	
+
 	switch args[0] {
 	case "get":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: admin config get <key>")
 		}
-		
+
 		key := args[1]
 		value, err := r.client.Get(ctx, key)
 		if err != nil {
 			return fmt.Errorf("failed to get configuration: %w", err)
 		}
-		
+
 		fmt.Printf("%s\n", string(value))
 		return nil
 	case "set":
 		if len(args) != 3 {
 			return fmt.Errorf("usage: admin config set <key> <value>")
 		}
-		
+
 		key := args[1]
 		value := args[2]
-		
+
 		if err := r.client.Put(ctx, key, []byte(value)); err != nil {
 			return fmt.Errorf("failed to set configuration: %w", err)
 		}
-		
+
 		fmt.Printf("Configuration set: %s = %s\n", key, value)
 		return nil
 	default:
@@ -2020,37 +2037,37 @@ func (r *REPLSession) handleAdminMetadata(ctx context.Context, args []string) er
 	if len(args) < 1 {
 		return fmt.Errorf("usage: admin metadata <list|get>")
 	}
-	
+
 	switch args[0] {
 	case "list":
 		prefix := "_/"
 		if len(args) > 1 {
 			prefix = args[1]
 		}
-		
+
 		endKey := prefix + "~"
 		results, err := r.client.Range(ctx, prefix, endKey, 100)
 		if err != nil {
 			return fmt.Errorf("failed to list metadata: %w", err)
 		}
-		
+
 		fmt.Printf("Metadata keys with prefix '%s':\n", prefix)
 		for key, value := range results {
 			fmt.Printf("  %s: %s\n", key, string(value))
 		}
-		
+
 		return nil
 	case "get":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: admin metadata get <key>")
 		}
-		
+
 		key := args[1]
 		value, err := r.client.Get(ctx, key)
 		if err != nil {
 			return fmt.Errorf("failed to get metadata: %w", err)
 		}
-		
+
 		fmt.Printf("%s\n", string(value))
 		return nil
 	default:
@@ -2063,7 +2080,7 @@ func (r *REPLSession) handleAdminBackup(ctx context.Context, args []string) erro
 	if len(args) < 1 {
 		return fmt.Errorf("usage: admin backup <list|create|restore>")
 	}
-	
+
 	switch args[0] {
 	case "list":
 		backupPrefix := "_/backup/metadata/"
@@ -2072,13 +2089,13 @@ func (r *REPLSession) handleAdminBackup(ctx context.Context, args []string) erro
 		if err != nil {
 			return fmt.Errorf("failed to list backups: %w", err)
 		}
-		
+
 		fmt.Printf("Available backups:\n")
 		for key, value := range results {
 			backupPath := key[len(backupPrefix):]
 			fmt.Printf("  %s: %s\n", backupPath, string(value))
 		}
-		
+
 		return nil
 	default:
 		return fmt.Errorf("backup subcommand '%s' not implemented in REPL", args[0])

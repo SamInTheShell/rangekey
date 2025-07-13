@@ -1,5 +1,4 @@
 # Docker Compose for 5-node RangeDB cluster
-version: '3.8'
 
 services:
   rangedb-1:
@@ -9,21 +8,22 @@ services:
     ports:
       - "8080:8080"  # Peer communication
       - "8081:8081"  # Client API
+      - "8082:8082"  # Raft transport
     volumes:
       - rangedb_data_1:/data
     environment:
       - RANGEDB_NODE_ID=1
       - RANGEDB_CLUSTER_SIZE=5
-    command: >
-      rangedb server
-      --peer-address=rangedb-1:8080
-      --client-address=rangedb-1:8081
-      --peers=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
-      --cluster-init
+    command:
+      - "server"
+      - "--peer-address=rangedb-1:8080"
+      - "--client-address=rangedb-1:8081"
+      - "--peers=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080"
+      - "--cluster-init"
     networks:
       - rangedb-network
     healthcheck:
-      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      test: ["CMD", "rangedb", "admin", "cluster", "status", "--address=rangedb-1:8081"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -34,25 +34,26 @@ services:
     container_name: rangedb-2
     hostname: rangedb-2
     ports:
-      - "8082:8080"  # Peer communication
-      - "8083:8081"  # Client API
+      - "8083:8080"  # Peer communication
+      - "8084:8081"  # Client API
+      - "8085:8082"  # Raft transport
     volumes:
       - rangedb_data_2:/data
     environment:
       - RANGEDB_NODE_ID=2
       - RANGEDB_CLUSTER_SIZE=5
-    command: >
-      rangedb server
-      --peer-address=rangedb-2:8080
-      --client-address=rangedb-2:8081
-      --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
+    command:
+      - "server"
+      - "--peer-address=rangedb-2:8080"
+      - "--client-address=rangedb-2:8081"
+      - "--join=rangedb-1:8081,rangedb-2:8081,rangedb-3:8081,rangedb-4:8081,rangedb-5:8081"
     networks:
       - rangedb-network
     depends_on:
       rangedb-1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      test: ["CMD", "rangedb", "admin", "cluster", "status", "--address=rangedb-2:8081"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -63,25 +64,26 @@ services:
     container_name: rangedb-3
     hostname: rangedb-3
     ports:
-      - "8084:8080"  # Peer communication
-      - "8085:8081"  # Client API
+      - "8086:8080"  # Peer communication
+      - "8087:8081"  # Client API
+      - "8088:8082"  # Raft transport
     volumes:
       - rangedb_data_3:/data
     environment:
       - RANGEDB_NODE_ID=3
       - RANGEDB_CLUSTER_SIZE=5
-    command: >
-      rangedb server
-      --peer-address=rangedb-3:8080
-      --client-address=rangedb-3:8081
-      --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
+    command:
+      - "server"
+      - "--peer-address=rangedb-3:8080"
+      - "--client-address=rangedb-3:8081"
+      - "--join=rangedb-1:8081,rangedb-2:8081,rangedb-3:8081,rangedb-4:8081,rangedb-5:8081"
     networks:
       - rangedb-network
     depends_on:
       rangedb-1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      test: ["CMD", "rangedb", "admin", "cluster", "status", "--address=rangedb-3:8081"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -92,25 +94,26 @@ services:
     container_name: rangedb-4
     hostname: rangedb-4
     ports:
-      - "8086:8080"  # Peer communication
-      - "8087:8081"  # Client API
+      - "8089:8080"  # Peer communication
+      - "8090:8081"  # Client API
+      - "8091:8082"  # Raft transport
     volumes:
       - rangedb_data_4:/data
     environment:
       - RANGEDB_NODE_ID=4
       - RANGEDB_CLUSTER_SIZE=5
-    command: >
-      rangedb server
-      --peer-address=rangedb-4:8080
-      --client-address=rangedb-4:8081
-      --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
+    command:
+      - "server"
+      - "--peer-address=rangedb-4:8080"
+      - "--client-address=rangedb-4:8081"
+      - "--join=rangedb-1:8081,rangedb-2:8081,rangedb-3:8081,rangedb-4:8081,rangedb-5:8081"
     networks:
       - rangedb-network
     depends_on:
       rangedb-1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      test: ["CMD", "rangedb", "admin", "cluster", "status", "--address=rangedb-4:8081"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -121,25 +124,26 @@ services:
     container_name: rangedb-5
     hostname: rangedb-5
     ports:
-      - "8088:8080"  # Peer communication
-      - "8089:8081"  # Client API
+      - "8092:8080"  # Peer communication
+      - "8093:8081"  # Client API
+      - "8094:8082"  # Raft transport
     volumes:
       - rangedb_data_5:/data
     environment:
       - RANGEDB_NODE_ID=5
       - RANGEDB_CLUSTER_SIZE=5
-    command: >
-      rangedb server
-      --peer-address=rangedb-5:8080
-      --client-address=rangedb-5:8081
-      --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080,rangedb-4:8080,rangedb-5:8080
+    command:
+      - "server"
+      - "--peer-address=rangedb-5:8080"
+      - "--client-address=rangedb-5:8081"
+      - "--join=rangedb-1:8081,rangedb-2:8081,rangedb-3:8081,rangedb-4:8081,rangedb-5:8081"
     networks:
       - rangedb-network
     depends_on:
       rangedb-1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      test: ["CMD", "rangedb", "admin", "cluster", "status", "--address=rangedb-5:8081"]
       interval: 30s
       timeout: 10s
       retries: 3

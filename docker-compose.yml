@@ -1,5 +1,4 @@
 # Simple Docker Compose for single node testing
-version: '3.8'
 
 services:
   rangedb:
@@ -14,7 +13,9 @@ services:
     environment:
       - RANGEDB_NODE_ID=1
       - RANGEDB_CLUSTER_SIZE=1
-    command: rangedb server --cluster-init
+    command:
+      - "server"
+      - "--cluster-init"
     networks:
       - rangedb-network
     healthcheck:

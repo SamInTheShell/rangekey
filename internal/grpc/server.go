@@ -451,6 +451,70 @@ func (s *Server) GetNodeInfo(ctx context.Context, req *v1.GetNodeInfoRequest) (*
 	}, nil
 }
 
+func (s *Server) JoinCluster(ctx context.Context, req *v1.JoinClusterRequest) (*v1.JoinClusterResponse, error) {
+	if !s.started {
+		return nil, status.Error(codes.Unavailable, "server is not started")
+	}
+
+	// Get current cluster configuration
+	clusterConfig, err := s.config.Metadata.GetClusterConfig(ctx)
+	if err != nil {
+		return &v1.JoinClusterResponse{
+			Success: false,
+			Message: fmt.Sprintf("failed to get cluster config: %v", err),
+		}, nil
+	}
+
+	// Check if node is already in the cluster
+	for _, node := range clusterConfig.Nodes {
+		if node.ID == req.NodeId {
+			return &v1.JoinClusterResponse{
+				Success: false,
+				Message: "node already exists in cluster",
+			}, nil
+		}
+	}
+
+	// Create new node info
+	newNode := metadata.NodeInfo{
+		ID:            req.NodeId,
+		PeerAddress:   req.PeerAddress,
+		ClientAddress: req.ClientAddress,
+		Status:        metadata.NodeStatusJoining,
+		JoinedAt:      time.Now(),
+	}
+
+	// Add node to cluster configuration
+	clusterConfig.Nodes = append(clusterConfig.Nodes, newNode)
+	clusterConfig.UpdatedAt = time.Now()
+
+	// Store updated cluster configuration
+	if err := s.config.Metadata.StoreClusterConfig(ctx, clusterConfig); err != nil {
+		return &v1.JoinClusterResponse{
+			Success: false,
+			Message: fmt.Sprintf("failed to store cluster config: %v", err),
+		}, nil
+	}
+
+	// Convert metadata nodes to protobuf nodes
+	var nodes []*v1.NodeInfo
+	for _, node := range clusterConfig.Nodes {
+		nodes = append(nodes, &v1.NodeInfo{
+			NodeId:        node.ID,
+			PeerAddress:   node.PeerAddress,
+			ClientAddress: node.ClientAddress,
+			Status:        v1.NodeStatus_NODE_RUNNING,
+		})
+	}
+
+	return &v1.JoinClusterResponse{
+		Success:   true,
+		Message:   "node joined cluster successfully",
+		ClusterId: clusterConfig.ID,
+		Nodes:     nodes,
+	}, nil
+}
+
 // loggingUnaryInterceptor logs unary gRPC requests
 func loggingUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	start := time.Now()

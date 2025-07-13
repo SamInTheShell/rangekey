@@ -430,3 +430,21 @@ func (c *Client) GetNodeInfo(ctx context.Context) (*v1.GetNodeInfoResponse, erro
 
 	return resp, nil
 }
+
+// JoinCluster requests to join a cluster
+func (c *Client) JoinCluster(ctx context.Context, req *v1.JoinClusterRequest) (*v1.JoinClusterResponse, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("client is not connected")
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(ctx, c.config.RequestTimeout)
+	defer cancel()
+
+	resp, err := c.client.JoinCluster(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to join cluster: %w", err)
+	}
+
+	return resp, nil
+}

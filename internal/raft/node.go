@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -66,6 +67,16 @@ const (
 type commit struct {
 	data       []byte
 	applyDoneC chan struct{}
+}
+
+// peerToRaftAddress converts a peer address to a Raft transport address
+// Peer addresses use port 8080, Raft addresses use port 8082
+func peerToRaftAddress(peerAddr string) string {
+	host, _, err := net.SplitHostPort(peerAddr)
+	if err != nil {
+		return peerAddr // Return as-is if parsing fails
+	}
+	return fmt.Sprintf("%s:8082", host)
 }
 
 // NewNode creates a new Raft node
@@ -160,17 +171,18 @@ func (n *Node) Start(ctx context.Context) error {
 	if len(n.config.Peers) > 0 {
 		for i, peer := range n.config.Peers {
 			peerID := uint64(i + 1)
-			if peer == n.config.NodeID {
+			if peer == n.config.ListenAddr {
 				peerID = nodeID
 			}
 			peers = append(peers, raft.Peer{
 				ID:      peerID,
 				Context: []byte(peer),
 			})
-			
-			// Add peer to transport layer
-			if peer != n.config.NodeID {
-				n.transport.AddPeer(peerID, peer)
+
+			// Add peer to transport layer - don't add ourselves
+			if peer != n.config.ListenAddr {
+				raftAddr := peerToRaftAddress(peer)
+				n.transport.AddPeer(peerID, raftAddr)
 			}
 		}
 	} else {
@@ -186,8 +198,8 @@ func (n *Node) Start(ctx context.Context) error {
 		// Starting a new cluster
 		n.node = raft.StartNode(raftConfig, peers)
 	} else {
-		// Joining existing cluster
-		n.node = raft.StartNode(raftConfig, nil)
+		// Joining existing cluster - use RestartNode for existing clusters
+		n.node = raft.RestartNode(raftConfig)
 	}
 
 	// Start the state machine
@@ -417,7 +429,7 @@ func (n *Node) sendMessage(ctx context.Context, msg raftpb.Message) error {
 	if n.transport == nil {
 		return fmt.Errorf("transport layer not available")
 	}
-	
+
 	return n.transport.SendMessage(ctx, msg.To, &msg)
 }
 
@@ -431,14 +443,14 @@ func (n *Node) AddNode(ctx context.Context, nodeID uint64, address string) error
 	if n.transport != nil {
 		n.transport.AddPeer(nodeID, address)
 	}
-	
+
 	// Add node to Raft cluster
 	cc := raftpb.ConfChange{
 		Type:    raftpb.ConfChangeAddNode,
 		NodeID:  nodeID,
 		Context: []byte(address),
 	}
-	
+
 	return n.node.ProposeConfChange(ctx, cc)
 }
 
@@ -447,13 +459,13 @@ func (n *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 	if n.transport != nil {
 		n.transport.RemovePeer(nodeID)
 	}
-	
+
 	// Remove node from Raft cluster
 	cc := raftpb.ConfChange{
 		Type:   raftpb.ConfChangeRemoveNode,
 		NodeID: nodeID,
 	}
-	
+
 	return n.node.ProposeConfChange(ctx, cc)
 }
 
