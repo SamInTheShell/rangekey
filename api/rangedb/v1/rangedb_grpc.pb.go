@@ -36,6 +36,11 @@ type RangeDBClient interface {
 	// Cluster operations
 	GetClusterInfo(ctx context.Context, in *GetClusterInfoRequest, opts ...grpc.CallOption) (*GetClusterInfoResponse, error)
 	GetNodeInfo(ctx context.Context, in *GetNodeInfoRequest, opts ...grpc.CallOption) (*GetNodeInfoResponse, error)
+	JoinCluster(ctx context.Context, in *JoinClusterRequest, opts ...grpc.CallOption) (*JoinClusterResponse, error)
+	// Backup and restore operations
+	CreateBackup(ctx context.Context, in *CreateBackupRequest, opts ...grpc.CallOption) (*CreateBackupResponse, error)
+	RestoreBackup(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (*RestoreBackupResponse, error)
+	GetBackupMetadata(ctx context.Context, in *GetBackupMetadataRequest, opts ...grpc.CallOption) (*GetBackupMetadataResponse, error)
 }
 
 type rangeDBClient struct {
@@ -159,6 +164,42 @@ func (c *rangeDBClient) GetNodeInfo(ctx context.Context, in *GetNodeInfoRequest,
 	return out, nil
 }
 
+func (c *rangeDBClient) JoinCluster(ctx context.Context, in *JoinClusterRequest, opts ...grpc.CallOption) (*JoinClusterResponse, error) {
+	out := new(JoinClusterResponse)
+	err := c.cc.Invoke(ctx, "/rangedb.v1.RangeDB/JoinCluster", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rangeDBClient) CreateBackup(ctx context.Context, in *CreateBackupRequest, opts ...grpc.CallOption) (*CreateBackupResponse, error) {
+	out := new(CreateBackupResponse)
+	err := c.cc.Invoke(ctx, "/rangedb.v1.RangeDB/CreateBackup", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rangeDBClient) RestoreBackup(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (*RestoreBackupResponse, error) {
+	out := new(RestoreBackupResponse)
+	err := c.cc.Invoke(ctx, "/rangedb.v1.RangeDB/RestoreBackup", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rangeDBClient) GetBackupMetadata(ctx context.Context, in *GetBackupMetadataRequest, opts ...grpc.CallOption) (*GetBackupMetadataResponse, error) {
+	out := new(GetBackupMetadataResponse)
+	err := c.cc.Invoke(ctx, "/rangedb.v1.RangeDB/GetBackupMetadata", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RangeDBServer is the server API for RangeDB service.
 // All implementations must embed UnimplementedRangeDBServer
 // for forward compatibility
@@ -177,6 +218,11 @@ type RangeDBServer interface {
 	// Cluster operations
 	GetClusterInfo(context.Context, *GetClusterInfoRequest) (*GetClusterInfoResponse, error)
 	GetNodeInfo(context.Context, *GetNodeInfoRequest) (*GetNodeInfoResponse, error)
+	JoinCluster(context.Context, *JoinClusterRequest) (*JoinClusterResponse, error)
+	// Backup and restore operations
+	CreateBackup(context.Context, *CreateBackupRequest) (*CreateBackupResponse, error)
+	RestoreBackup(context.Context, *RestoreBackupRequest) (*RestoreBackupResponse, error)
+	GetBackupMetadata(context.Context, *GetBackupMetadataRequest) (*GetBackupMetadataResponse, error)
 	mustEmbedUnimplementedRangeDBServer()
 }
 
@@ -213,6 +259,18 @@ func (UnimplementedRangeDBServer) GetClusterInfo(context.Context, *GetClusterInf
 }
 func (UnimplementedRangeDBServer) GetNodeInfo(context.Context, *GetNodeInfoRequest) (*GetNodeInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetNodeInfo not implemented")
+}
+func (UnimplementedRangeDBServer) JoinCluster(context.Context, *JoinClusterRequest) (*JoinClusterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method JoinCluster not implemented")
+}
+func (UnimplementedRangeDBServer) CreateBackup(context.Context, *CreateBackupRequest) (*CreateBackupResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateBackup not implemented")
+}
+func (UnimplementedRangeDBServer) RestoreBackup(context.Context, *RestoreBackupRequest) (*RestoreBackupResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RestoreBackup not implemented")
+}
+func (UnimplementedRangeDBServer) GetBackupMetadata(context.Context, *GetBackupMetadataRequest) (*GetBackupMetadataResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBackupMetadata not implemented")
 }
 func (UnimplementedRangeDBServer) mustEmbedUnimplementedRangeDBServer() {}
 
@@ -410,6 +468,78 @@ func _RangeDB_GetNodeInfo_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RangeDB_JoinCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JoinClusterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RangeDBServer).JoinCluster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rangedb.v1.RangeDB/JoinCluster",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RangeDBServer).JoinCluster(ctx, req.(*JoinClusterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RangeDB_CreateBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateBackupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RangeDBServer).CreateBackup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rangedb.v1.RangeDB/CreateBackup",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RangeDBServer).CreateBackup(ctx, req.(*CreateBackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RangeDB_RestoreBackup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestoreBackupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RangeDBServer).RestoreBackup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rangedb.v1.RangeDB/RestoreBackup",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RangeDBServer).RestoreBackup(ctx, req.(*RestoreBackupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RangeDB_GetBackupMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBackupMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RangeDBServer).GetBackupMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/rangedb.v1.RangeDB/GetBackupMetadata",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RangeDBServer).GetBackupMetadata(ctx, req.(*GetBackupMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RangeDB_ServiceDesc is the grpc.ServiceDesc for RangeDB service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -452,6 +582,22 @@ var RangeDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetNodeInfo",
 			Handler:    _RangeDB_GetNodeInfo_Handler,
+		},
+		{
+			MethodName: "JoinCluster",
+			Handler:    _RangeDB_JoinCluster_Handler,
+		},
+		{
+			MethodName: "CreateBackup",
+			Handler:    _RangeDB_CreateBackup_Handler,
+		},
+		{
+			MethodName: "RestoreBackup",
+			Handler:    _RangeDB_RestoreBackup_Handler,
+		},
+		{
+			MethodName: "GetBackupMetadata",
+			Handler:    _RangeDB_GetBackupMetadata_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

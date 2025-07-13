@@ -222,6 +222,10 @@ func TestConfigValidation(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	// Setup test environment
+	helper := NewTestHelper()
+	if !helper.IsInitialized() {
+		panic("test helper not initialized")
+	}
 
 	// Run tests
 	code := m.Run()

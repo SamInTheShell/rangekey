@@ -1,5 +1,4 @@
 # Docker Compose for 3-node RangeDB cluster
-version: '3.8'
 
 services:
   rangedb-1:
@@ -14,16 +13,16 @@ services:
     environment:
       - RANGEDB_NODE_ID=1
       - RANGEDB_CLUSTER_SIZE=3
-    command: >
-      rangedb server
-      --peer-address=rangedb-1:8080
-      --client-address=rangedb-1:8081
-      --peers=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080
-      --cluster-init
+    command:
+      - "server"
+      - "--peer-address=rangedb-1:8080"
+      - "--client-address=rangedb-1:8081"
+      - "--peers=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080"
+      - "--cluster-init"
     networks:
       - rangedb-network
     healthcheck:
-      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      test: ["CMD", "rangedb", "admin", "cluster", "status", "--address=rangedb-1:8081"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -41,18 +40,18 @@ services:
     environment:
       - RANGEDB_NODE_ID=2
       - RANGEDB_CLUSTER_SIZE=3
-    command: >
-      rangedb server
-      --peer-address=rangedb-2:8080
-      --client-address=rangedb-2:8081
-      --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080
+    command:
+      - "server"
+      - "--peer-address=rangedb-2:8080"
+      - "--client-address=rangedb-2:8081"
+      - "--join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080"
     networks:
       - rangedb-network
     depends_on:
       rangedb-1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      test: ["CMD", "rangedb", "admin", "cluster", "status", "--address=rangedb-2:8081"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -70,18 +69,18 @@ services:
     environment:
       - RANGEDB_NODE_ID=3
       - RANGEDB_CLUSTER_SIZE=3
-    command: >
-      rangedb server
-      --peer-address=rangedb-3:8080
-      --client-address=rangedb-3:8081
-      --join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080
+    command:
+      - "server"
+      - "--peer-address=rangedb-3:8080"
+      - "--client-address=rangedb-3:8081"
+      - "--join=rangedb-1:8080,rangedb-2:8080,rangedb-3:8080"
     networks:
       - rangedb-network
     depends_on:
       rangedb-1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "rangedb", "admin", "cluster", "status"]
+      test: ["CMD", "rangedb", "admin", "cluster", "status", "--address=rangedb-3:8081"]
       interval: 30s
       timeout: 10s
       retries: 3

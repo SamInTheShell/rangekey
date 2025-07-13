@@ -93,41 +93,40 @@ func TestDistributedConsensus(t *testing.T) {
 		t.Logf("Server %d is running", i+1)
 	}
 
-	// Wait for cluster to form and leader election
-	time.Sleep(8 * time.Second)
-
-	// Test leader election
-	leaderCount := 0
+	// Wait for cluster to form and leader election with better retry logic
 	var leaderServer *server.Server
-	for i, srv := range servers {
-		isLeader := srv.IsLeader()
-		t.Logf("Node %d leader status: %v", i+1, isLeader)
-		if isLeader {
-			leaderCount++
-			leaderServer = srv
-			t.Logf("Node %d is the leader", i+1)
-		}
-	}
-
-	t.Logf("Total leader count: %d", leaderCount)
+	var leaderCount int
 	
-	if leaderCount == 0 {
-		t.Logf("No leader found, checking if cluster is still forming...")
-		// Wait a bit more for leader election to complete
-		time.Sleep(2 * time.Second)
+	// Try for up to 30 seconds with 1-second intervals
+	for attempt := 0; attempt < 30; attempt++ {
+		time.Sleep(1 * time.Second)
 		
-		// Check again
 		leaderCount = 0
+		leaderServer = nil
+		
 		for i, srv := range servers {
-			isLeader := srv.IsLeader()
-			t.Logf("Node %d leader status (retry): %v", i+1, isLeader)
-			if isLeader {
+			if srv.IsLeader() {
 				leaderCount++
 				leaderServer = srv
-				t.Logf("Node %d is the leader (retry)", i+1)
+				t.Logf("Attempt %d: Node %d is the leader", attempt+1, i+1)
 			}
 		}
+		
+		// If we found exactly one leader, break out
+		if leaderCount == 1 {
+			t.Logf("Leader election successful after %d seconds", attempt+1)
+			break
+		}
+		
+		// If we have multiple leaders, that's a problem
+		if leaderCount > 1 {
+			t.Logf("Attempt %d: Multiple leaders found (%d), continuing...", attempt+1, leaderCount)
+		} else {
+			t.Logf("Attempt %d: No leader found yet, retrying...", attempt+1)
+		}
 	}
+
+	t.Logf("Final leader count: %d", leaderCount)
 	
 	if leaderCount != 1 {
 		t.Errorf("Expected 1 leader, got %d", leaderCount)

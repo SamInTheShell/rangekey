@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,6 +73,10 @@ Examples:
 				Usage: "Log level (debug, info, warn, error)",
 				Value: "info",
 			},
+			&cli.StringFlag{
+				Name:  "node-id",
+				Usage: "Unique node identifier",
+			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			// Build server configuration with defaults
@@ -84,6 +91,13 @@ Examples:
 			cfg.ClusterInit = cmd.Bool("cluster-init")
 			cfg.RaftPort = int(cmd.Int("raft-port"))
 			cfg.LogLevel = cmd.String("log-level")
+
+			// Set NodeID from command line flag, environment variable, or default
+			if nodeID := cmd.String("node-id"); nodeID != "" {
+				cfg.NodeID = nodeID
+			} else if nodeID := os.Getenv("RANGEDB_NODE_ID"); nodeID != "" {
+				cfg.NodeID = nodeID
+			}
 
 			// Validate configuration
 			if err := cfg.Validate(); err != nil {
@@ -458,10 +472,10 @@ func NewBatchCommand() *cli.Command {
 				Usage:     "Batch put operations",
 				ArgsUsage: "<key1> <value1> [key2 value2 ...]",
 				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:  "address",
-						Usage: "Server address",
-						Value: "localhost:8081",
+					&cli.StringSliceFlag{
+						Name:  "endpoints",
+						Usage: "Comma-separated list of server endpoints",
+						Value: []string{"localhost:8081"},
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -470,7 +484,10 @@ func NewBatchCommand() *cli.Command {
 						return fmt.Errorf("usage: rangedb batch put <key1> <value1> [key2 value2 ...]")
 					}
 
-					address := cmd.String("address")
+					endpoints := cmd.StringSlice("endpoints")
+
+					// Use first endpoint for compatibility
+					address := endpoints[0]
 
 					// Create client
 					client, err := client.NewClient(&client.Config{
@@ -529,14 +546,17 @@ func NewAdminCommand() *cli.Command {
 						Name:  "status",
 						Usage: "Show cluster status",
 						Flags: []cli.Flag{
-							&cli.StringFlag{
-								Name:  "address",
-								Usage: "Server address",
-								Value: "localhost:8081",
+							&cli.StringSliceFlag{
+								Name:  "endpoints",
+								Usage: "Comma-separated list of server endpoints",
+								Value: []string{"localhost:8081"},
 							},
 						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
-							address := cmd.String("address")
+							endpoints := cmd.StringSlice("endpoints")
+
+							// Use first endpoint for compatibility with existing client
+							address := endpoints[0]
 
 							// Create client
 							client, err := client.NewClient(&client.Config{
@@ -1431,6 +1451,657 @@ func NewVersionCommand() *cli.Command {
 	}
 }
 
+// NewREPLCommand creates the REPL command
+func NewREPLCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "repl",
+		Usage: "Start interactive REPL session",
+		Description: `Start an interactive REPL (Read-Eval-Print Loop) session for RangeDB.
+This provides a convenient way to test and iterate on database operations.
+
+Features:
+- Interactive command prompt
+- Support for all database operations (GET, PUT, DELETE, RANGE)
+- Transaction management within sessions
+- Command history and help
+- Low-friction debugging and testing environment
+
+Examples:
+  rangedb> get /user/123
+  rangedb> put /user/123 '{"name": "John"}'
+  rangedb> begin
+  rangedb(txn:abc123)> put /user/456 '{"name": "Jane"}'
+  rangedb(txn:abc123)> commit
+  rangedb> range /user/ /user/z
+  rangedb> help
+  rangedb> exit`,
+		Flags: []cli.Flag{
+			&cli.StringSliceFlag{
+				Name:  "endpoints",
+				Usage: "Comma-separated list of server endpoints",
+				Value: []string{"localhost:8081"},
+			},
+			&cli.DurationFlag{
+				Name:  "timeout",
+				Usage: "Request timeout",
+				Value: 30 * time.Second,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			endpoints := cmd.StringSlice("endpoints")
+			timeout := cmd.Duration("timeout")
+
+			// Create client
+			client, err := createClient(endpoints, timeout)
+			if err != nil {
+				return fmt.Errorf("failed to connect to RangeDB: %w", err)
+			}
+			defer client.Close()
+
+			// Start REPL
+			repl := &REPLSession{
+				client:  client,
+				timeout: timeout,
+			}
+
+			fmt.Println("RangeDB REPL - Interactive Database Session")
+			fmt.Printf("Connected to: %s\n", endpoints[0])
+			fmt.Println("Type 'help' for available commands, 'exit' to quit")
+			fmt.Println()
+
+			return repl.Run(ctx)
+		},
+	}
+}
+
+// REPLSession manages an interactive REPL session
+type REPLSession struct {
+	client       ClientInterface
+	timeout      time.Duration
+	currentTxn   *client.Transaction
+	commandHistory []string
+}
+
+// Run starts the REPL session
+func (r *REPLSession) Run(ctx context.Context) error {
+	scanner := bufio.NewScanner(os.Stdin)
+
+	for {
+		// Show prompt
+		prompt := "rangedb> "
+		if r.currentTxn != nil {
+			prompt = fmt.Sprintf("rangedb(txn:%s)> ", r.currentTxn.ID()[:8])
+		}
+		fmt.Print(prompt)
+
+		// Read input
+		if !scanner.Scan() {
+			break
+		}
+
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		// Add to history
+		r.commandHistory = append(r.commandHistory, line)
+
+		// Process command
+		if err := r.processCommand(ctx, line); err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
+	}
+
+	// Check for scanner errors
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("input error: %w", err)
+	}
+
+	return nil
+}
+
+// processCommand processes a single REPL command
+func (r *REPLSession) processCommand(ctx context.Context, input string) error {
+	// Parse command more carefully to handle quoted strings
+	parts := r.parseCommand(input)
+	if len(parts) == 0 {
+		return nil
+	}
+
+	command := strings.ToLower(parts[0])
+	args := parts[1:]
+
+	switch command {
+	case "help", "h":
+		r.showHelp()
+		return nil
+	case "exit", "quit", "q":
+		fmt.Println("Goodbye!")
+		os.Exit(0)
+		return nil
+	case "clear":
+		fmt.Print("\033[H\033[2J")
+		return nil
+	case "history":
+		r.showHistory()
+		return nil
+	case "status":
+		return r.showStatus(ctx)
+	case "get":
+		return r.handleGet(ctx, args)
+	case "put":
+		return r.handlePut(ctx, args)
+	case "delete", "del":
+		return r.handleDelete(ctx, args)
+	case "range":
+		return r.handleRange(ctx, args)
+	case "begin", "start":
+		return r.handleBegin(ctx, args)
+	case "commit":
+		return r.handleCommit(ctx, args)
+	case "rollback", "abort":
+		return r.handleRollback(ctx, args)
+	case "batch":
+		return r.handleBatch(ctx, args)
+	case "admin":
+		return r.handleAdmin(ctx, args)
+	case "version":
+		fmt.Println(version.Get().String())
+		return nil
+	default:
+		return fmt.Errorf("unknown command: %s. Type 'help' for available commands", command)
+	}
+}
+
+// parseCommand parses a command line, handling quoted strings correctly
+func (r *REPLSession) parseCommand(input string) []string {
+	var parts []string
+	var current strings.Builder
+	var inQuote bool
+	var quoteChar rune
+
+	for _, char := range input {
+		switch char {
+		case '"', '\'':
+			if !inQuote {
+				inQuote = true
+				quoteChar = char
+			} else if char == quoteChar {
+				inQuote = false
+				quoteChar = 0
+			} else {
+				current.WriteRune(char)
+			}
+		case ' ', '\t':
+			if inQuote {
+				current.WriteRune(char)
+			} else if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(char)
+		}
+	}
+
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts
+}
+
+// showHelp displays available commands
+func (r *REPLSession) showHelp() {
+	fmt.Printf(`Available commands:
+
+Database Operations:
+  get <key>                           Get value by key
+  put <key> <value>                   Put key-value pair
+  delete <key>                        Delete key
+  range <start> <end> [limit]         Get range of keys
+
+Transaction Operations:
+  begin                               Begin new transaction
+  commit                              Commit current transaction
+  rollback                            Rollback current transaction
+
+Batch Operations:
+  batch put <key1> <value1> [key2 value2 ...]    Batch put operations
+
+Administrative:
+  admin cluster status                Show cluster status
+  admin config get <key>              Get configuration value
+  admin config set <key> <value>      Set configuration value
+  admin metadata list [prefix]        List metadata keys
+  admin backup list                   List backups
+
+Session Management:
+  help, h                             Show this help
+  status                              Show session status
+  history                             Show command history
+  clear                               Clear screen
+  exit, quit, q                       Exit REPL
+  version                             Show version
+
+Examples:
+  rangedb> put /user/123 '{"name": "John", "age": 25}'
+  rangedb> get /user/123
+  rangedb> begin
+  rangedb(txn:abc123)> put /user/456 '{"name": "Jane"}'
+  rangedb(txn:abc123)> commit
+  rangedb> range /user/ /user/z
+  rangedb> admin cluster status
+`)
+}
+
+// showHistory displays command history
+func (r *REPLSession) showHistory() {
+	fmt.Println("Command History:")
+	for i, cmd := range r.commandHistory {
+		fmt.Printf("%3d: %s\n", i+1, cmd)
+	}
+}
+
+// showStatus displays session status
+func (r *REPLSession) showStatus(ctx context.Context) error {
+	fmt.Printf("Session Status:\n")
+	fmt.Printf("  Timeout: %v\n", r.timeout)
+	fmt.Printf("  Commands executed: %d\n", len(r.commandHistory))
+
+	if r.currentTxn != nil {
+		fmt.Printf("  Active transaction: %s\n", r.currentTxn.ID())
+	} else {
+		fmt.Printf("  Active transaction: none\n")
+	}
+
+	return nil
+}
+
+// handleGet processes GET commands
+func (r *REPLSession) handleGet(ctx context.Context, args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: get <key>")
+	}
+
+	key := args[0]
+
+	var value []byte
+	var err error
+
+	if r.currentTxn != nil {
+		value, err = r.currentTxn.Get(ctx, key)
+	} else {
+		value, err = r.client.Get(ctx, key)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to get key %s: %w", key, err)
+	}
+
+	fmt.Printf("%s\n", string(value))
+	return nil
+}
+
+// handlePut processes PUT commands
+func (r *REPLSession) handlePut(ctx context.Context, args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: put <key> <value>")
+	}
+
+	key := args[0]
+	value := args[1]
+
+	var err error
+
+	if r.currentTxn != nil {
+		err = r.currentTxn.Put(ctx, key, []byte(value))
+	} else {
+		err = r.client.Put(ctx, key, []byte(value))
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to put key %s: %w", key, err)
+	}
+
+	fmt.Printf("OK\n")
+	return nil
+}
+
+// handleDelete processes DELETE commands
+func (r *REPLSession) handleDelete(ctx context.Context, args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: delete <key>")
+	}
+
+	key := args[0]
+
+	var err error
+
+	if r.currentTxn != nil {
+		err = r.currentTxn.Delete(ctx, key)
+	} else {
+		err = r.client.Delete(ctx, key)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to delete key %s: %w", key, err)
+	}
+
+	fmt.Printf("OK\n")
+	return nil
+}
+
+// handleRange processes RANGE commands
+func (r *REPLSession) handleRange(ctx context.Context, args []string) error {
+	if len(args) < 2 || len(args) > 3 {
+		return fmt.Errorf("usage: range <start> <end> [limit]")
+	}
+
+	startKey := args[0]
+	endKey := args[1]
+	limit := 100
+
+	if len(args) == 3 {
+		var err error
+		limit, err = strconv.Atoi(args[2])
+		if err != nil {
+			return fmt.Errorf("invalid limit: %s", args[2])
+		}
+	}
+
+	var results map[string][]byte
+	var err error
+
+	if r.currentTxn != nil {
+		kvs, err := r.currentTxn.Range(ctx, startKey, endKey, limit)
+		if err != nil {
+			return fmt.Errorf("failed to get range: %w", err)
+		}
+
+		results = make(map[string][]byte)
+		for _, kv := range kvs {
+			results[string(kv.Key)] = kv.Value
+		}
+	} else {
+		results, err = r.client.Range(ctx, startKey, endKey, limit)
+		if err != nil {
+			return fmt.Errorf("failed to get range: %w", err)
+		}
+	}
+
+	if len(results) == 0 {
+		fmt.Println("No results found")
+		return nil
+	}
+
+	for key, value := range results {
+		fmt.Printf("%s: %s\n", key, string(value))
+	}
+
+	return nil
+}
+
+// handleBegin processes BEGIN commands
+func (r *REPLSession) handleBegin(ctx context.Context, args []string) error {
+	if r.currentTxn != nil {
+		return fmt.Errorf("transaction already active: %s", r.currentTxn.ID())
+	}
+
+	txn, err := r.client.BeginTransaction(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	r.currentTxn = txn
+	fmt.Printf("Transaction started: %s\n", txn.ID())
+	return nil
+}
+
+// handleCommit processes COMMIT commands
+func (r *REPLSession) handleCommit(ctx context.Context, args []string) error {
+	if r.currentTxn == nil {
+		return fmt.Errorf("no active transaction")
+	}
+
+	if err := r.currentTxn.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	fmt.Printf("Transaction %s committed\n", r.currentTxn.ID())
+	r.currentTxn = nil
+	return nil
+}
+
+// handleRollback processes ROLLBACK commands
+func (r *REPLSession) handleRollback(ctx context.Context, args []string) error {
+	if r.currentTxn == nil {
+		return fmt.Errorf("no active transaction")
+	}
+
+	if err := r.currentTxn.Rollback(ctx); err != nil {
+		return fmt.Errorf("failed to rollback transaction: %w", err)
+	}
+
+	fmt.Printf("Transaction %s rolled back\n", r.currentTxn.ID())
+	r.currentTxn = nil
+	return nil
+}
+
+// handleBatch processes BATCH commands
+func (r *REPLSession) handleBatch(ctx context.Context, args []string) error {
+	if len(args) < 3 || args[0] != "put" {
+		return fmt.Errorf("usage: batch put <key1> <value1> [key2 value2 ...]")
+	}
+
+	args = args[1:] // Remove "put"
+
+	if len(args) < 2 || len(args)%2 != 0 {
+		return fmt.Errorf("usage: batch put <key1> <value1> [key2 value2 ...]")
+	}
+
+	// Create batch operations
+	var operations []*v1.BatchOperation
+	for i := 0; i < len(args); i += 2 {
+		key := args[i]
+		value := args[i+1]
+
+		operations = append(operations, &v1.BatchOperation{
+			Operation: &v1.BatchOperation_Put{
+				Put: &v1.PutRequest{
+					Key:   []byte(key),
+					Value: []byte(value),
+				},
+			},
+		})
+	}
+
+	// Execute batch using the underlying client
+	realClient, ok := r.client.(*realClient)
+	if !ok {
+		return fmt.Errorf("batch operations not supported in this session")
+	}
+
+	if err := realClient.client.Batch(ctx, operations); err != nil {
+		return fmt.Errorf("failed to execute batch: %w", err)
+	}
+
+	fmt.Printf("Batch operation completed successfully (%d operations)\n", len(operations))
+	return nil
+}
+
+// handleAdmin processes ADMIN commands
+func (r *REPLSession) handleAdmin(ctx context.Context, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: admin <subcommand>")
+	}
+
+	subcommand := args[0]
+	subargs := args[1:]
+
+	switch subcommand {
+	case "cluster":
+		return r.handleAdminCluster(ctx, subargs)
+	case "config":
+		return r.handleAdminConfig(ctx, subargs)
+	case "metadata":
+		return r.handleAdminMetadata(ctx, subargs)
+	case "backup":
+		return r.handleAdminBackup(ctx, subargs)
+	default:
+		return fmt.Errorf("unknown admin subcommand: %s", subcommand)
+	}
+}
+
+// handleAdminCluster processes admin cluster commands
+func (r *REPLSession) handleAdminCluster(ctx context.Context, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: admin cluster <status>")
+	}
+
+	switch args[0] {
+	case "status":
+		// Get cluster info using the underlying client
+		realClient, ok := r.client.(*realClient)
+		if !ok {
+			return fmt.Errorf("cluster operations not supported in this session")
+		}
+
+		clusterInfo, err := realClient.client.GetClusterInfo(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get cluster info: %w", err)
+		}
+
+		fmt.Printf("Cluster Status:\n")
+		fmt.Printf("  Cluster ID: %s\n", clusterInfo.ClusterId)
+		fmt.Printf("  Replication Factor: %d\n", clusterInfo.ReplicationFactor)
+		fmt.Printf("  Number of Partitions: %d\n", clusterInfo.NumPartitions)
+		fmt.Printf("  Nodes (%d):\n", len(clusterInfo.Nodes))
+
+		for i, node := range clusterInfo.Nodes {
+			fmt.Printf("    %d. %s\n", i+1, node.NodeId)
+			fmt.Printf("       Client Address: %s\n", node.ClientAddress)
+			fmt.Printf("       Peer Address: %s\n", node.PeerAddress)
+			fmt.Printf("       Status: %s\n", node.Status)
+			fmt.Printf("       Partitions: %v\n", node.PartitionIds)
+		}
+
+		return nil
+	default:
+		return fmt.Errorf("unknown cluster subcommand: %s", args[0])
+	}
+}
+
+// handleAdminConfig processes admin config commands
+func (r *REPLSession) handleAdminConfig(ctx context.Context, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: admin config <get|set>")
+	}
+
+	switch args[0] {
+	case "get":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: admin config get <key>")
+		}
+
+		key := args[1]
+		value, err := r.client.Get(ctx, key)
+		if err != nil {
+			return fmt.Errorf("failed to get configuration: %w", err)
+		}
+
+		fmt.Printf("%s\n", string(value))
+		return nil
+	case "set":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: admin config set <key> <value>")
+		}
+
+		key := args[1]
+		value := args[2]
+
+		if err := r.client.Put(ctx, key, []byte(value)); err != nil {
+			return fmt.Errorf("failed to set configuration: %w", err)
+		}
+
+		fmt.Printf("Configuration set: %s = %s\n", key, value)
+		return nil
+	default:
+		return fmt.Errorf("unknown config subcommand: %s", args[0])
+	}
+}
+
+// handleAdminMetadata processes admin metadata commands
+func (r *REPLSession) handleAdminMetadata(ctx context.Context, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: admin metadata <list|get>")
+	}
+
+	switch args[0] {
+	case "list":
+		prefix := "_/"
+		if len(args) > 1 {
+			prefix = args[1]
+		}
+
+		endKey := prefix + "~"
+		results, err := r.client.Range(ctx, prefix, endKey, 100)
+		if err != nil {
+			return fmt.Errorf("failed to list metadata: %w", err)
+		}
+
+		fmt.Printf("Metadata keys with prefix '%s':\n", prefix)
+		for key, value := range results {
+			fmt.Printf("  %s: %s\n", key, string(value))
+		}
+
+		return nil
+	case "get":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: admin metadata get <key>")
+		}
+
+		key := args[1]
+		value, err := r.client.Get(ctx, key)
+		if err != nil {
+			return fmt.Errorf("failed to get metadata: %w", err)
+		}
+
+		fmt.Printf("%s\n", string(value))
+		return nil
+	default:
+		return fmt.Errorf("unknown metadata subcommand: %s", args[0])
+	}
+}
+
+// handleAdminBackup processes admin backup commands
+func (r *REPLSession) handleAdminBackup(ctx context.Context, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: admin backup <list|create|restore>")
+	}
+
+	switch args[0] {
+	case "list":
+		backupPrefix := "_/backup/metadata/"
+		endKey := backupPrefix + "~"
+		results, err := r.client.Range(ctx, backupPrefix, endKey, 100)
+		if err != nil {
+			return fmt.Errorf("failed to list backups: %w", err)
+		}
+
+		fmt.Printf("Available backups:\n")
+		for key, value := range results {
+			backupPath := key[len(backupPrefix):]
+			fmt.Printf("  %s: %s\n", backupPath, string(value))
+		}
+
+		return nil
+	default:
+		return fmt.Errorf("backup subcommand '%s' not implemented in REPL", args[0])
+	}
+}
+
 // createClient creates a new client connection
 func createClient(endpoints []string, timeout time.Duration) (ClientInterface, error) {
 	if len(endpoints) == 0 {
@@ -1523,6 +2194,7 @@ USAGE:
 
 COMMANDS:
    server    Start a RangeDB server node
+   repl      Start interactive REPL session
    get       Get a value by key
    put       Put a key-value pair
    delete    Delete a key
@@ -1540,12 +2212,14 @@ Run '%s command --help' for more information on a command.
 
 Examples:
    %s server --cluster-init
+   %s repl
    %s put /user/123 '{"name": "John"}'
    %s get /user/123
    %s range /user/ /user/z
 `,
 		cmd.Name,
 		cmd.Description,
+		cmd.Name,
 		cmd.Name,
 		cmd.Name,
 		cmd.Name,

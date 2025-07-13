@@ -101,6 +101,33 @@ Build a distributed key-value database using etcd v3 as foundation with multi-ra
 ### 🎉 PROJECT COMPLETION STATUS: 100%
 **All phases completed successfully. RangeDB is now a fully-featured, production-ready distributed key-value database.**
 
+### 🚀 NEW FEATURE ADDED: Interactive REPL
+**A comprehensive interactive REPL (Read-Eval-Print Loop) has been added to provide developers with a low-friction interface for testing, debugging, and iterating on database operations.**
+
+#### REPL Features:
+- **Interactive Command Interface**: All database operations available interactively
+- **Transaction Management**: Full transaction support with begin/commit/rollback
+- **Administrative Operations**: Cluster status, configuration, and metadata inspection
+- **Command History**: Access to previously executed commands
+- **Help System**: Built-in help for all available commands
+- **Error Handling**: Graceful error handling with helpful messages
+- **Quoted String Support**: Proper parsing of quoted strings and JSON values
+- **Status Information**: View session and cluster status
+- **Low Friction Experience**: Perfect for new users to get started quickly
+
+#### REPL Commands:
+- Database Operations: `get`, `put`, `delete`, `range`
+- Transaction Operations: `begin`, `commit`, `rollback`
+- Administrative: `admin cluster status`, `admin config get/set`, `admin metadata list`
+- Session Management: `help`, `status`, `history`, `clear`, `exit`
+
+This addresses the key requirements from the issue:
+✅ **Transactional functionality testing** - Full transaction support within REPL
+✅ **State validation** - Easy data inspection and validation
+✅ **Low friction for new users** - Simple, intuitive interface
+✅ **Debugging and interaction** - Perfect for containerized environments
+✅ **Great user experience** - Comprehensive help, error handling, and feedback
+
 ## Project Overview
 Build a distributed key-value database using etcd v3 as foundation with multi-raft consensus, automatic data distribution and migration, transactional support, and comprehensive backup/recovery capabilities. Single binary deployment model.
 
@@ -379,6 +406,18 @@ Build a distributed key-value database using etcd v3 as foundation with multi-ra
 ./rangedb get /user/123
 ./rangedb delete /user/123
 
+# Interactive REPL session
+./rangedb repl
+# rangedb> put /user/123 '{"name": "John"}'
+# rangedb> get /user/123
+# rangedb> begin
+# rangedb(txn:abc123)> put /user/456 '{"name": "Jane"}'
+# rangedb(txn:abc123)> commit
+# rangedb> range /user/ /user/z
+# rangedb> admin cluster status
+# rangedb> help
+# rangedb> exit
+
 # Range queries
 ./rangedb range /user/ /user/z
 
@@ -411,6 +450,10 @@ Build a distributed key-value database using etcd v3 as foundation with multi-ra
 # Server subcommand for running the database node
 ./rangedb server --help
 ./rangedb server --peer-address=node1:8080 --cluster-init
+
+# Interactive REPL session
+./rangedb repl --help
+./rangedb repl --endpoints=localhost:8081
 
 # Client operations
 ./rangedb get /user/123

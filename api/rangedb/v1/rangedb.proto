@@ -23,7 +23,8 @@ service RangeDB {
   // Cluster operations
   rpc GetClusterInfo(GetClusterInfoRequest) returns (GetClusterInfoResponse);
   rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
-  
+  rpc JoinCluster(JoinClusterRequest) returns (JoinClusterResponse);
+
   // Backup and restore operations
   rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
   rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
@@ -224,4 +225,18 @@ message BackupMetadata {
   int64 size = 2;
   int64 created_timestamp = 3;
   bool is_valid = 4;
+}
+
+// Join Cluster operation
+message JoinClusterRequest {
+  string node_id = 1;
+  string peer_address = 2;
+  string client_address = 3;
+}
+
+message JoinClusterResponse {
+  bool success = 1;
+  string message = 2;
+  string cluster_id = 3;
+  repeated NodeInfo nodes = 4;
 }
