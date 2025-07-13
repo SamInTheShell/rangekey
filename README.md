@@ -1,3 +1,5 @@
+Final Edit: I'm marking this project as a failure for AI. The system doesn't work, but there is a ton of code here that can be used as reference when I do revisit this project in retirement.
+
 # RangeDB
 
 A distributed key-value database built with Go, featuring automatic partitioning, multi-raft consensus, ACID transactions, and high availability.
