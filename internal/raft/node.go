@@ -70,13 +70,26 @@ type commit struct {
 }
 
 // peerToRaftAddress converts a peer address to a Raft transport address
-// Peer addresses use port 8080, Raft addresses use port 8082
+// For standard configurations: peer port 8080 -> raft port 8082
+// For test configurations: maintain the peer port (assume it's already a raft port)
 func peerToRaftAddress(peerAddr string) string {
-	host, _, err := net.SplitHostPort(peerAddr)
+	host, port, err := net.SplitHostPort(peerAddr)
 	if err != nil {
 		return peerAddr // Return as-is if parsing fails
 	}
-	return fmt.Sprintf("%s:8082", host)
+	
+	// If the port is already 8082 or above 10000 (test range), keep it as-is
+	if port == "8082" || port >= "10000" {
+		return peerAddr
+	}
+	
+	// For standard port 8080, convert to 8082
+	if port == "8080" {
+		return fmt.Sprintf("%s:8082", host)
+	}
+	
+	// For other ports, assume it's already a raft port
+	return peerAddr
 }
 
 // NewNode creates a new Raft node
